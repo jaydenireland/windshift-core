@@ -397,6 +397,11 @@ export default {
     webhookSecretRotated: 'GitLab webhook secret generated',
     webhookLoadFailed: 'Failed to load GitLab webhook settings',
     webhookRotateFailed: 'Failed to generate GitLab webhook secret',
+    githubWebhook: 'GitHub webhook',
+    githubWebhookHelp: 'Add the payload URL and secret to the GitHub repository webhook with content type application/json. Push, branch and tag creation, pull request, review, comment, and release events are accepted.',
+    githubWebhookSecretRotated: 'GitHub webhook secret generated',
+    githubWebhookLoadFailed: 'Failed to load GitHub webhook settings',
+    githubWebhookRotateFailed: 'Failed to generate GitHub webhook secret',
   },
   workspaceTemplates: {
     title: 'Work item templates',

@@ -407,6 +407,11 @@ export default {
     webhookSecretRotated: 'Секрет webhook GitLab создан',
     webhookLoadFailed: 'Не удалось загрузить настройки webhook GitLab',
     webhookRotateFailed: 'Не удалось создать секрет webhook GitLab',
+    githubWebhook: 'Webhook GitHub',
+    githubWebhookHelp: 'Добавьте URL и секрет в webhook репозитория GitHub, выбрав тип содержимого application/json. Принимаются события push, создание веток и тегов, pull request, review, комментарии и release.',
+    githubWebhookSecretRotated: 'Секрет webhook GitHub создан',
+    githubWebhookLoadFailed: 'Не удалось загрузить настройки webhook GitHub',
+    githubWebhookRotateFailed: 'Не удалось создать секрет webhook GitHub',
   },
   workspaceTemplates: {
     title: 'Шаблоны рабочих элементов',

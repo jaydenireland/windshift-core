@@ -563,6 +563,11 @@ export default {
   },
   "scmSettings": {
     "configureWebhook": "Générer les détails du webhook",
+    "githubWebhook": "Webhook GitHub",
+    "githubWebhookHelp": "Ajoutez l'URL de charge utile et le secret au webhook du dépôt GitHub avec le type de contenu application/json. Les événements push, création de branche et de tag, pull request, revue, commentaire et release sont acceptés.",
+    "githubWebhookLoadFailed": "Échec du chargement des paramètres du webhook GitHub",
+    "githubWebhookRotateFailed": "Échec de la génération du secret du webhook GitHub",
+    "githubWebhookSecretRotated": "Secret du webhook GitHub généré",
     "gitlabWebhook": "Webhook GitLab",
     "oauthConnected": "Compte de gestion de code source connecté",
     "oauthFailedCallback": "Échec de la connexion au gestionnaire de code source",

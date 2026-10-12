@@ -28,7 +28,12 @@
   let linkedRepos = $state({}); // connId -> repos array
   const loadingRepos = new SvelteSet();
   let authStatuses = $state({}); // connId -> auth status object
-  let webhookConfigs = $state({}); // repoId -> manual GitLab webhook config
+  let webhookConfigs = $state({}); // repoId -> manual GitHub/GitLab webhook config
+  // GitHub and GitLab accept manually configured webhooks; Gitea/Forgejo stay poll-only.
+  const MANUAL_WEBHOOK_PROVIDERS = new Set(['gitlab', 'github']);
+  const supportsManualWebhook = (providerType) => MANUAL_WEBHOOK_PROVIDERS.has(providerType);
+  const webhookText = (providerType, githubKey, gitlabKey) =>
+    t(providerType === 'github' ? `scmSettings.${githubKey}` : `scmSettings.${gitlabKey}`);
   const loadingWebhooks = new SvelteSet();
 
   // Modal state
@@ -257,7 +262,7 @@
     }
   }
 
-  async function loadWebhookConfig(repoId) {
+  async function loadWebhookConfig(repoId, providerType) {
     if (webhookConfigs[repoId]) {
       webhookConfigs = { ...webhookConfigs, [repoId]: null };
       return;
@@ -267,22 +272,22 @@
       const config = await api.workspaceSCM.getWebhookConfig(repoId);
       webhookConfigs = { ...webhookConfigs, [repoId]: config };
     } catch (error) {
-      console.error('Failed to load GitLab webhook config:', error);
-      errorToast(t('scmSettings.webhookLoadFailed'));
+      console.error('Failed to load SCM webhook config:', error);
+      errorToast(webhookText(providerType, 'githubWebhookLoadFailed', 'webhookLoadFailed'));
     } finally {
       loadingWebhooks.delete(repoId);
     }
   }
 
-  async function rotateWebhookSecret(repoId) {
+  async function rotateWebhookSecret(repoId, providerType) {
     loadingWebhooks.add(repoId);
     try {
       const config = await api.workspaceSCM.rotateWebhookSecret(repoId);
       webhookConfigs = { ...webhookConfigs, [repoId]: config };
-      successToast(t('scmSettings.webhookSecretRotated'));
+      successToast(webhookText(providerType, 'githubWebhookSecretRotated', 'webhookSecretRotated'));
     } catch (error) {
-      console.error('Failed to rotate GitLab webhook secret:', error);
-      errorToast(t('scmSettings.webhookRotateFailed'));
+      console.error('Failed to rotate SCM webhook secret:', error);
+      errorToast(webhookText(providerType, 'githubWebhookRotateFailed', 'webhookRotateFailed'));
     } finally {
       loadingWebhooks.delete(repoId);
     }
@@ -448,12 +453,12 @@
                       <div class="rounded-md" style="background-color: var(--ds-surface);">
                         <div class="flex items-center justify-between px-3 py-2">
                           <div class="flex items-center gap-2">
-                            {#if conn.provider_type === 'gitlab'}
+                            {#if supportsManualWebhook(conn.provider_type)}
                               <button
                                 class="p-1 rounded hover:bg-opacity-50"
                                 style="color: var(--ds-text-subtle);"
-                                title={t('scmSettings.gitlabWebhook')}
-                                onclick={() => loadWebhookConfig(repo.id)}
+                                title={webhookText(conn.provider_type, 'githubWebhook', 'gitlabWebhook')}
+                                onclick={() => loadWebhookConfig(repo.id, conn.provider_type)}
                               >
                                 {#if loadingWebhooks.has(repo.id)}
                                   <Spinner size="sm" />
@@ -533,12 +538,12 @@
                             </div>
                           </div>
                         {/if}
-                        {#if conn.provider_type === 'gitlab' && webhookConfigs[repo.id]}
+                        {#if supportsManualWebhook(conn.provider_type) && webhookConfigs[repo.id]}
                           {@const webhookConfig = webhookConfigs[repo.id]}
                           <div class="px-3 py-3 border-t space-y-3" style="border-color: var(--ds-border);">
                             <div>
-                              <p class="text-sm font-medium" style="color: var(--ds-text);">{t('scmSettings.gitlabWebhook')}</p>
-                              <p class="text-xs" style="color: var(--ds-text-subtle);">{t('scmSettings.webhookHelp')}</p>
+                              <p class="text-sm font-medium" style="color: var(--ds-text);">{webhookText(conn.provider_type, 'githubWebhook', 'gitlabWebhook')}</p>
+                              <p class="text-xs" style="color: var(--ds-text-subtle);">{webhookText(conn.provider_type, 'githubWebhookHelp', 'webhookHelp')}</p>
                             </div>
                             {#if webhookConfig.configured}
                               <div class="space-y-2">
@@ -555,7 +560,7 @@
                                 {/if}
                               </div>
                             {/if}
-                            <Button size="sm" variant="secondary" icon={RotateCw} onclick={() => rotateWebhookSecret(repo.id)} disabled={loadingWebhooks.has(repo.id)}>
+                            <Button size="sm" variant="secondary" icon={RotateCw} onclick={() => rotateWebhookSecret(repo.id, conn.provider_type)} disabled={loadingWebhooks.has(repo.id)}>
                               {webhookConfig.configured ? t('scmSettings.rotateWebhookSecret') : t('scmSettings.configureWebhook')}
                             </Button>
                           </div>

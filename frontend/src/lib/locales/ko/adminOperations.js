@@ -407,7 +407,12 @@ export default {
     "webhookSecretOnce": "지금 비밀 값을 복사하세요. 다시 표시되지 않습니다.",
     "webhookSecretRotated": "GitLab 웹훅 비밀 값을 생성했습니다",
     "webhookLoadFailed": "GitLab 웹훅 설정을 불러오지 못했습니다",
-    "webhookRotateFailed": "GitLab 웹훅 비밀 값을 생성하지 못했습니다"
+    "webhookRotateFailed": "GitLab 웹훅 비밀 값을 생성하지 못했습니다",
+    "githubWebhook": "GitHub 웹훅",
+    "githubWebhookHelp": "GitHub 저장소 웹훅에 페이로드 URL과 비밀 값을 추가하고 콘텐츠 유형을 application/json으로 설정하세요. 푸시, 브랜치 및 태그 생성, 풀 리퀘스트, 리뷰, 댓글 및 릴리스 이벤트를 지원합니다.",
+    "githubWebhookSecretRotated": "GitHub 웹훅 비밀 값을 생성했습니다",
+    "githubWebhookLoadFailed": "GitHub 웹훅 설정을 불러오지 못했습니다",
+    "githubWebhookRotateFailed": "GitHub 웹훅 비밀 값을 생성하지 못했습니다"
   },
   "workspaceTemplates": {
     "title": "작업 템플릿",

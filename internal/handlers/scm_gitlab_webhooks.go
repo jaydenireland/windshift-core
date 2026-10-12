@@ -1,174 +1,17 @@
 package handlers
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"windshift/internal/models"
-	"windshift/internal/repository"
 )
 
 var gitLabWebhookEvents = []string{"push", "tag_push", "merge_request", "note", "release"}
-
-type gitLabWebhookConfigResponse struct {
-	Configured     bool       `json:"configured"`
-	CallbackURL    string     `json:"callback_url,omitempty"`
-	Secret         string     `json:"secret,omitempty"`
-	Events         []string   `json:"events"`
-	Active         bool       `json:"active"`
-	LastDeliveryAt *time.Time `json:"last_delivery_at,omitempty"`
-}
-
-func (h *SCMItemLinksHandler) webhookRepoAdmin(w http.ResponseWriter, r *http.Request, repoID int) (string, bool) {
-	user, ok := RequireAuth(w, r)
-	if !ok {
-		return "", false
-	}
-	access, err := h.webhookRepo.GetRepositoryAccess(r.Context(), repoID)
-	if errors.Is(err, repository.ErrNotFound) {
-		respondNotFound(w, r, "workspace_repository")
-		return "", false
-	}
-	if err != nil {
-		respondInternalError(w, r, err)
-		return "", false
-	}
-	if !RequireWorkspacePermission(w, r, user.ID, access.WorkspaceID, models.PermissionWorkspaceAdmin, h.permissionService) {
-		return "", false
-	}
-	return access.ProviderType, true
-}
-
-func (h *SCMItemLinksHandler) webhookCallbackURL(r *http.Request, key string) string {
-	base := h.baseURL
-	if base == "" {
-		scheme := "https"
-		if r.TLS == nil {
-			if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
-				scheme = forwarded
-			} else {
-				scheme = "http"
-			}
-		}
-		host := r.Host
-		if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
-			host = forwarded
-		}
-		base = scheme + "://" + host
-	}
-	return strings.TrimRight(base, "/") + "/api/scm/webhooks/gitlab/" + key
-}
-
-// GetGitLabWebhookConfig returns manual setup information without exposing the secret.
-func (h *SCMItemLinksHandler) GetGitLabWebhookConfig(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := requireIDParam(w, r, "repoId")
-	if !ok {
-		return
-	}
-	providerType, ok := h.webhookRepoAdmin(w, r, repoID)
-	if !ok {
-		return
-	}
-	if providerType != string(models.SCMProviderTypeGitLab) {
-		respondBadRequest(w, r, "Webhooks on this endpoint are only available for GitLab repositories")
-		return
-	}
-	config, err := h.webhookRepo.GetConfig(r.Context(), repoID)
-	if errors.Is(err, repository.ErrNotFound) {
-		respondJSONOK(w, gitLabWebhookConfigResponse{Configured: false, Events: gitLabWebhookEvents})
-		return
-	}
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	response := gitLabWebhookConfigResponse{
-		Configured:     true,
-		CallbackURL:    h.webhookCallbackURL(r, config.WebhookKey),
-		Events:         gitLabWebhookEvents,
-		Active:         config.Active,
-		LastDeliveryAt: config.LastDeliveryAt,
-	}
-	respondJSONOK(w, response)
-}
-
-func randomWebhookValue(bytesCount int) (string, error) {
-	raw := make([]byte, bytesCount)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
-// RotateGitLabWebhookSecret creates or rotates the one-time manual setup secret.
-func (h *SCMItemLinksHandler) RotateGitLabWebhookSecret(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := requireIDParam(w, r, "repoId")
-	if !ok {
-		return
-	}
-	providerType, ok := h.webhookRepoAdmin(w, r, repoID)
-	if !ok {
-		return
-	}
-	if providerType != string(models.SCMProviderTypeGitLab) {
-		respondBadRequest(w, r, "Webhooks on this endpoint are only available for GitLab repositories")
-		return
-	}
-	secret, err := randomWebhookValue(32)
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	encrypted, err := h.encryption.Encrypt(secret)
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	newKey, err := randomWebhookValue(18)
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	key, err := h.webhookRepo.RotateConfig(
-		r.Context(),
-		repoID,
-		newKey,
-		encrypted,
-		`["push","tag_push","merge_request","note","release"]`,
-	)
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	respondJSONOK(w, gitLabWebhookConfigResponse{Configured: true, CallbackURL: h.webhookCallbackURL(r, key), Secret: secret, Events: gitLabWebhookEvents, Active: true})
-}
-
-func (h *SCMItemLinksHandler) DeleteGitLabWebhookConfig(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := requireIDParam(w, r, "repoId")
-	if !ok {
-		return
-	}
-	if _, ok := h.webhookRepoAdmin(w, r, repoID); !ok {
-		return
-	}
-	if err := h.webhookRepo.DeleteConfig(r.Context(), repoID); err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	respondJSONOK(w, map[string]bool{"deleted": true})
-}
 
 type gitLabWebhookPayload struct {
 	ObjectKind string `json:"object_kind"`
@@ -199,23 +42,8 @@ func normalizeGitLabWebhookKind(payload gitLabWebhookPayload) string {
 // ReceiveGitLabWebhook validates and deduplicates a GitLab delivery, then
 // schedules a targeted repository sync. Polling remains the recovery path.
 func (h *SCMItemLinksHandler) ReceiveGitLabWebhook(w http.ResponseWriter, r *http.Request) {
-	key := r.PathValue("webhookKey")
-	target, err := h.webhookRepo.GetTargetByKey(r.Context(), key)
-	if errors.Is(err, repository.ErrNotFound) {
-		respondNotFound(w, r, "scm_webhook")
-		return
-	}
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	if target.ProviderType != string(models.SCMProviderTypeGitLab) {
-		respondBadRequest(w, r, "Invalid webhook provider")
-		return
-	}
-	secret, err := h.encryption.Decrypt(target.EncryptedSecret)
-	if err != nil {
-		respondInternalError(w, r, err)
+	target, secret, ok := h.loadWebhookTarget(w, r, models.SCMProviderTypeGitLab)
+	if !ok {
 		return
 	}
 	provided := r.Header.Get("X-Gitlab-Token")
@@ -248,36 +76,7 @@ func (h *SCMItemLinksHandler) ReceiveGitLabWebhook(w http.ResponseWriter, r *htt
 		respondJSON(w, http.StatusForbidden, map[string]string{"error": "project mismatch"})
 		return
 	}
-	deliveryID := strings.TrimSpace(r.Header.Get("X-Gitlab-Event-UUID"))
-	if deliveryID == "" {
-		digest := sha256.Sum256(body)
-		deliveryID = hex.EncodeToString(digest[:])
-	}
+	deliveryID := webhookDeliveryID(r.Header.Get("X-Gitlab-Event-UUID"), body)
 	summary, _ := json.Marshal(map[string]any{"object_kind": eventType, "project_id": projectID, "path": payload.Project.PathWithNamespace, "iid": payload.ObjectAttributes.IID, "action": payload.ObjectAttributes.Action, "ref": payload.Ref, "tag": payload.ObjectAttributes.Tag})
-	inserted, err := h.webhookRepo.RecordPendingDelivery(r.Context(), target.ID, deliveryID, eventType, string(summary))
-	if err != nil {
-		respondInternalError(w, r, err)
-		return
-	}
-	respondJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
-	if !inserted {
-		return
-	}
-
-	baseCtx := context.WithoutCancel(r.Context())
-	go func() {
-		started := time.Now()
-		ctx, cancel := context.WithTimeout(baseCtx, 45*time.Second)
-		defer cancel()
-		syncErr := h.syncService.SyncRepository(ctx, target.WorkspaceRepositoryID)
-		status, errorMessage := "processed", ""
-		if syncErr != nil {
-			status, errorMessage = "failed", syncErr.Error()
-			slog.Warn("GitLab webhook sync failed", slog.Int("repository_id", target.WorkspaceRepositoryID), slog.Any("error", syncErr))
-		}
-		updateErr := h.webhookRepo.CompleteDelivery(ctx, target.ID, deliveryID, status, errorMessage, time.Since(started))
-		if updateErr != nil {
-			slog.Warn("GitLab webhook delivery update failed", slog.Any("error", updateErr), slog.String("delivery_id", deliveryID))
-		}
-	}()
+	h.acceptWebhookDelivery(w, r, target, deliveryID, eventType, string(summary))
 }
