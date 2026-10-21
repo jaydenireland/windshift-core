@@ -1,8 +1,8 @@
-# Fork notes: live co-editing
+# Fork notes: live co-editing and word-level history
 
-This fork adds live co-editing of knowledge pages and work-item descriptions on
-top of
-[Windshiftapp/core](https://github.com/Windshiftapp/core). The feature is kept
+This fork adds live co-editing of knowledge pages and work-item descriptions,
+and word-level diffs in item history, on top of
+[Windshiftapp/core](https://github.com/Windshiftapp/core). Each feature is kept
 almost entirely in fork-owned files so merging upstream stays routine. This
 file lists everything the fork changes in upstream-owned files and how to
 merge.
@@ -16,12 +16,13 @@ merge.
 | `internal/services/item_collab.go` | Silent description checkpoints and the settled history/event/notification step for items. Same reasoning as `page_collab.go` |
 | `frontend/src/lib/collab/` | Browser session (Yjs), Milkdown binding, merge, presence, strings for all locales, page and item-description controllers and components |
 | `frontend/vite.collab.js` | Vite settings for co-editing, added as a plugin |
+| `frontend/src/lib/historydiff/` | Word-level diff for text changes in item history: `wordDiff.js` (diff, collapsing, which rows qualify), `HistoryTextDiff.svelte`, own strings for all locales |
 | `FORK.md` | This file |
 
 Tests: `internal/collab/hub_test.go`, `internal/services/page_collab_test.go`,
 `internal/services/item_collab_test.go`,
-`frontend/src/lib/collab/*.spec.js` (force-added; the repo ignores test files
-by default).
+`frontend/src/lib/collab/*.spec.js`, `frontend/src/lib/historydiff/*.spec.js`
+(force-added; the repo ignores test files by default).
 
 ## Seams in upstream files
 
@@ -29,7 +30,8 @@ Each seam is a call site, kept as small as possible. List them all with:
 
 ```sh
 git diff upstream/main -- . ':!internal/collab' ':!frontend/src/lib/collab' \
-  ':!internal/services/page_collab*.go' ':!frontend/vite.collab.js' ':!FORK.md' \
+  ':!frontend/src/lib/historydiff' ':!internal/services/page_collab*.go' \
+  ':!internal/services/item_collab*.go' ':!frontend/vite.collab.js' ':!FORK.md' \
   ':!*.spec.js' ':!frontend/package-lock.json' ':!frontend/src/lib/generated'
 ```
 
@@ -42,6 +44,7 @@ git diff upstream/main -- . ':!internal/collab' ':!frontend/src/lib/collab' \
 | `frontend/src/lib/features/pages/PageEditor.svelte` | Passes `collab`/`collabKey` to the editor |
 | `frontend/src/lib/features/pages/PageToolbar.svelte` | `live` prop rendering `<LivePageStatus>` |
 | `frontend/src/lib/features/items/ItemDetailDescription.svelte` | `useLiveItemDescription(...)`; passes `collab`/`collabKey`/`readonly` to the editor; `<LiveItemDescriptionBar>` (Done) instead of Save/Cancel while live; Escape and Cmd/Ctrl+Enter finish a live edit; shows the just-edited text until the item reloads |
+| `frontend/src/lib/features/items/ItemHistory.svelte` | One import; one `{:else if historyDiffApplies(change)}` branch before the generic `old → new` branch, rendering `<HistoryTextDiff>` |
 | `frontend/vite.config.js` | Import plus `collabVitePlugin()` |
 | `frontend/package.json`, `go.mod` | Dependencies: `yjs`, `y-prosemirror`, `y-protocols`, `lib0`, `@milkdown/plugin-collab` (pinned to the installed Milkdown version), `diff-match-patch`; `github.com/coder/websocket` |
 | Generated: `frontend/package-lock.json`, `go.sum`, `frontend/src/lib/generated/license-manifest.json` | Regenerate rather than hand-merge (below) |
@@ -80,7 +83,7 @@ Then check that the seams still fit:
 
 ```sh
 go build ./... && go test ./internal/collab/ ./internal/services/ -run 'Collab|PageUpdate|PageRepository'
-cd frontend && npm run check && npm run typecheck && npx vitest run src/lib/collab
+cd frontend && npm run check && npm run typecheck && npx vitest run src/lib/collab src/lib/historydiff
 ```
 
 `page_collab.go` uses unexported page helpers (`contentHash`, `deriveExcerpt`,
@@ -95,6 +98,20 @@ reads `pages.content_hash`, `title`, `metadata` and `archived_at` directly.
 `ItemBackend.Probe` reads `items.description` and `merged_into_item_id`. If
 upstream adds side effects to description saves (in `updateItem`), mirror them
 in `SettleCollabDescription`.
+
+## Word-level history
+
+`item_history` already stores the full old and new text of a description
+change (one row per save, or per settled co-editing burst), so no backend or
+schema change is involved. `ItemHistory.svelte` upstream shows those as a
+truncated `old → new` pair; the seam hands rows that `historyDiffApplies`
+accepts (always `description`; other plain text once it is long enough to be
+truncated; never resolved ids, JSON, attachment or diagram values) to
+`HistoryTextDiff`, which renders insertions and deletions by word and folds
+long unchanged runs behind an "N unchanged words" button.
+
+If upstream restructures the `{#each group.changes}` block, re-add the branch
+just before its final `{:else}`. Nothing else depends on upstream internals.
 
 ## Item descriptions: when history and notifications fire
 
