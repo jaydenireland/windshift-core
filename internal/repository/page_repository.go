@@ -279,7 +279,18 @@ type UpdateInput struct {
 	// Unarchive clears archived_at/archived_by while applying the update.
 	// Used by restore; normal title/content edits leave archive state alone.
 	Unarchive bool
+	// KeepContent leaves content, content_hash and excerpt untouched, so a
+	// title or metadata edit cannot write back a stale copy of the body.
+	KeepContent bool
+	// ExpectedContentHash makes the write conditional on the stored content
+	// hash. The predicate is part of the UPDATE, so the check is atomic under
+	// PostgreSQL READ COMMITTED; a mismatch returns ErrContentHashMismatch.
+	ExpectedContentHash *string
 }
+
+// ErrContentHashMismatch reports that a conditional page update found the row
+// but its content hash no longer matched.
+var ErrContentHashMismatch = errors.New("page content hash mismatch")
 
 // UpdateTx applies a content/title/slug/inheritance edit within a transaction.
 // rank and frac_index are deliberately not touched — sibling ordering is owned
@@ -291,15 +302,21 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 	query := `
 		UPDATE pages
 		SET title = ?,
-		    slug = ?,
+		    slug = ?,`
+	args := make([]any, 0, 11)
+	args = append(args, in.Title, in.Slug)
+	if !in.KeepContent {
+		query += `
 		    content = ?,
 		    content_hash = ?,
-		    excerpt = ?,
+		    excerpt = ?,`
+		args = append(args, in.Content, in.ContentHash, in.Excerpt)
+	}
+	query += `
 		    inherit_permissions = ?,
 		    updated_by = ?,
 		    updated_at = ?`
-	args := make([]any, 0, 10)
-	args = append(args, in.Title, in.Slug, in.Content, in.ContentHash, in.Excerpt, in.InheritPermissions, in.UpdatedBy, now)
+	args = append(args, in.InheritPermissions, in.UpdatedBy, now)
 	if in.Metadata != nil {
 		query += `,
 		    metadata = ?`
@@ -313,6 +330,10 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 	query += `
 		WHERE id = ?`
 	args = append(args, in.ID)
+	if in.ExpectedContentHash != nil {
+		query += ` AND content_hash = ?`
+		args = append(args, *in.ExpectedContentHash)
+	}
 	res, err := tx.Exec(query, args...)
 	if err != nil {
 		if isUniqueConstraintError(err) {
@@ -322,6 +343,15 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
+		if in.ExpectedContentHash != nil {
+			var exists int
+			if err := tx.QueryRow("SELECT COUNT(*) FROM pages WHERE id = ?", in.ID).Scan(&exists); err != nil {
+				return fmt.Errorf("check page %d after conditional update: %w", in.ID, err)
+			}
+			if exists > 0 {
+				return ErrContentHashMismatch
+			}
+		}
 		return ErrNotFound
 	}
 	return nil

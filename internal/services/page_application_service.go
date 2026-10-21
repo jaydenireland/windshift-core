@@ -296,6 +296,7 @@ func (s *PageApplicationService) Update(actor AuditActor, workspaceID int, in Pa
 		Content:             content,
 		Metadata:            in.Metadata,
 		ExpectedContentHash: in.ExpectedContentHash,
+		PreserveContent:     in.Content == nil,
 	})
 	if err != nil {
 		return nil, err

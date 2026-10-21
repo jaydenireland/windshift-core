@@ -207,6 +207,9 @@ type UpdatePageInput struct {
 	Content             string
 	Metadata            *json.RawMessage
 	ExpectedContentHash *string
+	// PreserveContent ignores Content and leaves the stored body untouched,
+	// for title- or metadata-only edits.
+	PreserveContent bool
 }
 
 // Update overwrites a page's title/content and recomputes the derived
@@ -257,10 +260,16 @@ func (s *PageService) Update(actorID int, in UpdatePageInput) (*models.Page, err
 			InheritPermissions: existing.InheritPermissions,
 			Metadata:           metadata,
 			UpdatedBy:          actorID,
+			KeepContent:        in.PreserveContent,
+			// Re-checked in the UPDATE itself: the read above is a plain SELECT.
+			ExpectedContentHash: in.ExpectedContentHash,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrDuplicateEntry) {
 				return nil, ErrPageUniqueConflict
+			}
+			if errors.Is(err, repository.ErrContentHashMismatch) {
+				return nil, ErrPageContentConflict
 			}
 			if errors.Is(err, repository.ErrNotFound) {
 				return nil, ErrPageNotFound
