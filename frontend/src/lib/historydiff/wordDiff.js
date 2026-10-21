@@ -118,32 +118,35 @@ function tokenize(text) {
 }
 
 /**
- * Fold long unchanged runs. A folded run becomes `{op: 'skip', words}` so the
- * view can show "N unchanged words" in its place; runs at the very start or end
- * keep only the context nearest the change.
- * @param {ReturnType<typeof diffWords>} segments
- * @returns {Array<{op: 'equal' | 'insert' | 'delete' | 'skip', text: string, words?: number}>}
+ * @typedef {{op: 'equal' | 'insert' | 'delete', text: string}} Segment
+ * @typedef {{op: 'skip', of: Segment['op'], text: string, words: number}} Skip
+ */
+
+/**
+ * Fold long runs. An unchanged run keeps CONTEXT tokens next to each
+ * neighbouring change (none at the very start or end of the text) and the rest
+ * becomes a `skip` so the view can show "N unchanged words". A long inserted
+ * or deleted run (typically the item's creation, where everything is new)
+ * keeps its first CONTEXT tokens and folds the rest the same way, with `of`
+ * naming what was folded.
+ * @param {Segment[]} segments
+ * @returns {Array<Segment | Skip>}
  */
 export function collapseDiff(segments) {
+  /** @type {Array<Segment | Skip>} */
   const out = [];
   segments.forEach((seg, i) => {
-    if (seg.op !== 'equal') {
-      out.push(seg);
-      return;
-    }
     const tokens = tokenize(seg.text);
     if (tokens.length <= COLLAPSE_OVER) {
       out.push(seg);
       return;
     }
-    const first = i === 0;
-    const last = i === segments.length - 1;
-    const headLen = first ? 0 : CONTEXT;
-    const tailLen = last ? 0 : CONTEXT;
+    const headLen = seg.op === 'equal' && i === 0 ? 0 : CONTEXT;
+    const tailLen = seg.op === 'equal' && i !== segments.length - 1 ? CONTEXT : 0;
     const hidden = tokens.slice(headLen, tokens.length - tailLen);
-    if (headLen) out.push({ op: 'equal', text: tokens.slice(0, headLen).join('') });
-    out.push({ op: 'skip', text: hidden.join(''), words: countWords(hidden) });
-    if (tailLen) out.push({ op: 'equal', text: tokens.slice(tokens.length - tailLen).join('') });
+    if (headLen) out.push({ op: seg.op, text: tokens.slice(0, headLen).join('') });
+    out.push({ op: 'skip', of: seg.op, text: hidden.join(''), words: countWords(hidden) });
+    if (tailLen) out.push({ op: seg.op, text: tokens.slice(tokens.length - tailLen).join('') });
   });
   return out;
 }

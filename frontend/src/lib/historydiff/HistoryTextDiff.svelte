@@ -26,7 +26,7 @@
   {#each shown as seg, i (i)}
     {#if seg.op === 'skip'}
       <button type="button" class="history-diff__skip" onclick={() => (expanded = true)}>
-        {historyDiffText('unchanged', seg.words)}
+        {historyDiffText(seg.of === 'equal' ? 'unchanged' : 'more', seg.words)}
       </button>
     {:else if seg.op === 'insert'}
       <ins class="history-diff__ins" title={historyDiffText('added')}>{seg.text}</ins>
@@ -71,6 +71,11 @@
     background: var(--ds-danger-subtle);
     color: var(--ds-text-subtle);
     border-radius: 2px;
+  }
+
+  /* A replaced word: keep a sliver between the old and the new. */
+  .history-diff__del + .history-diff__ins {
+    margin-left: 0.2em;
   }
 
   .history-diff__skip {

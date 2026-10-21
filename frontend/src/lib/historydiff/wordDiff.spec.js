@@ -47,7 +47,7 @@ describe('collapseDiff', () => {
     const after = `begin ${filler(100)} stop`;
     const out = collapseDiff(diffWords(before, after));
     const skip = out.find((s) => s.op === 'skip');
-    expect(skip).toBeDefined();
+    expect(skip).toMatchObject({ of: 'equal' });
     expect(skip?.words).toBeGreaterThan(50);
     const idx = out.indexOf(skip);
     expect(out[idx - 1].op).toBe('equal');
@@ -59,6 +59,13 @@ describe('collapseDiff', () => {
   it('keeps no trailing context when the unchanged run ends the text', () => {
     const out = collapseDiff(diffWords(`start ${filler(100)}`, `begin ${filler(100)}`));
     expect(out[out.length - 1].op).toBe('skip');
+  });
+
+  it('folds a long pure insertion after a short head', () => {
+    const out = collapseDiff(diffWords('', filler(100)));
+    expect(out[0].op).toBe('insert');
+    expect(out[1]).toMatchObject({ op: 'skip', of: 'insert' });
+    expect(out).toHaveLength(2);
   });
 
   it('keeps no leading context at the very start of the text', () => {

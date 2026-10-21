@@ -6,42 +6,49 @@ import { i18n } from '../stores/i18n.svelte.js';
 // fall back to English.
 const STRINGS = {
   en: {
+    more: (n) => `${n} more ${n === 1 ? 'word' : 'words'}`,
     unchanged: (n) => `${n} unchanged ${n === 1 ? 'word' : 'words'}`,
     showLess: 'Show less',
     added: 'Added',
     removed: 'Removed',
   },
   de: {
+    more: (n) => `${n} weitere ${n === 1 ? 'Wort' : 'Wörter'}`,
     unchanged: (n) => `${n} unveränderte ${n === 1 ? 'Wort' : 'Wörter'}`,
     showLess: 'Weniger anzeigen',
     added: 'Hinzugefügt',
     removed: 'Entfernt',
   },
   fr: {
+    more: (n) => `${n} ${n === 1 ? 'mot de plus' : 'mots de plus'}`,
     unchanged: (n) => `${n} ${n === 1 ? 'mot inchangé' : 'mots inchangés'}`,
     showLess: 'Afficher moins',
     added: 'Ajouté',
     removed: 'Supprimé',
   },
   ru: {
+    more: (n) => `ещё ${n}`,
     unchanged: (n) => `${n} без изменений`,
     showLess: 'Свернуть',
     added: 'Добавлено',
     removed: 'Удалено',
   },
   es: {
+    more: (n) => `${n} ${n === 1 ? 'palabra más' : 'palabras más'}`,
     unchanged: (n) => `${n} ${n === 1 ? 'palabra sin cambios' : 'palabras sin cambios'}`,
     showLess: 'Mostrar menos',
     added: 'Añadido',
     removed: 'Eliminado',
   },
   ar: {
+    more: (n) => `${n} كلمات إضافية`,
     unchanged: (n) => `${n} كلمات بدون تغيير`,
     showLess: 'عرض أقل',
     added: 'مُضاف',
     removed: 'محذوف',
   },
   ko: {
+    more: (n) => `단어 ${n}개 더`,
     unchanged: (n) => `변경되지 않은 단어 ${n}개`,
     showLess: '간략히 보기',
     added: '추가됨',
@@ -50,7 +57,7 @@ const STRINGS = {
 };
 
 /**
- * @param {'unchanged' | 'showLess' | 'added' | 'removed'} key
+ * @param {'unchanged' | 'more' | 'showLess' | 'added' | 'removed'} key
  * @param {number} [count]
  */
 export function historyDiffText(key, count = 0) {
