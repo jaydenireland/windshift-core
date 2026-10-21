@@ -139,6 +139,9 @@ type room struct {
 	compactPending   bool
 	wroteCheckpoint  bool
 	lastActor        int
+	// editors are the users whose updates the next checkpoint covers, most
+	// recent last.
+	editors []int
 }
 
 type checkpointRequest struct {
@@ -146,6 +149,7 @@ type checkpointRequest struct {
 	markdown string
 	hash     string
 	seq      int64
+	editors  []int
 }
 
 func newRoom(h *Hub, backend Backend, key string, id int) *room {
@@ -199,6 +203,10 @@ func (r *room) run() {
 	defer close(r.done)
 	go r.persistQ.run()
 	if err := r.load(); err != nil {
+		if errors.Is(err, ErrGone) {
+			r.failAll("gone")
+			return
+		}
 		slog.Error("collab: load document", "doc", r.key, "error", err)
 		r.failAll("unavailable")
 		return
@@ -529,6 +537,7 @@ func (r *room) update(c *conn, m *Message) {
 	r.log = append(r.log, u)
 	r.logBytes += len(u.data)
 	r.pendingAppends = append(r.pendingAppends, u)
+	r.editors = mergeEditors(r.editors, []int{c.userID})
 	r.sendTo(c, &Message{Type: msgAck, Seq: u.seq})
 	r.broadcast(&Message{Type: msgUpdate, Data: u.data, Seq: u.seq}, c)
 	if !r.compactPending && r.leader != nil && (len(r.log) > compactAfterEntries || r.logBytes > compactAfterBytes) {
@@ -567,9 +576,24 @@ func (r *room) startCheckpoint(req *checkpointRequest) {
 	// includes them; the queue is FIFO.
 	r.flushAppends()
 	key := r.key
+	base := r.stored
+	req.editors = r.editors
+	r.editors = nil
+	editors := req.editors
+	if len(editors) == 0 {
+		// Only a merge of an outside write; the leader made it.
+		editors = []int{req.conn.userID}
+	}
+	_, settles := r.backend.(Settler)
 	r.persistQ.push(func(ctx context.Context) error {
 		stored, err := r.backend.Checkpoint(ctx, req.conn.userID, r.id, req.markdown, req.hash, func(tx database.Tx, stored Content) error {
-			return setMaterializedTx(ctx, tx, key, stored.Hash, stored.Markdown, req.seq)
+			if err := setMaterializedTx(ctx, tx, key, stored.Hash, stored.Markdown, req.seq); err != nil {
+				return err
+			}
+			if !settles || stored.Hash == base.Hash {
+				return nil
+			}
+			return recordBurstTx(ctx, tx, r.backend.Kind(), r.id, key, base, stored, editors, time.Now())
 		})
 		r.post(func() { r.checkpointDone(req, stored, err) })
 		return nil
@@ -594,6 +618,7 @@ func (r *room) checkpointDone(req *checkpointRequest, stored Content, err error)
 		r.broadcast(&Message{Type: msgCheckpointed, Hash: stored.Hash, Seq: req.seq}, nil)
 		r.checkStale()
 	case errors.Is(err, ErrConflict):
+		r.editors = mergeEditors(req.editors, r.editors)
 		// Another writer changed the page: merge it before checkpointing again.
 		// The leader also learns the current hash in case its base was simply
 		// out of date.
@@ -605,6 +630,7 @@ func (r *room) checkpointDone(req *checkpointRequest, stored Content, err error)
 		r.closeAll("gone")
 		return
 	default:
+		r.editors = mergeEditors(req.editors, r.editors)
 		slog.Error("collab: checkpoint", "doc", r.key, "error", err)
 		if r.indexOf(req.conn) >= 0 {
 			r.sendTo(req.conn, &Message{Type: msgError, Error: "checkpoint_failed"})

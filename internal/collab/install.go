@@ -32,6 +32,8 @@ type Deps struct {
 
 	Pages           *services.PageService
 	PagePermissions *services.PagePermissionService
+	// Items co-edits item descriptions; nil leaves them on explicit saves.
+	Items *services.ItemUpdateApplicationService
 }
 
 // Install wires co-editing into a server: it creates the tables, starts the
@@ -56,6 +58,10 @@ func Install(d Deps) *Hub {
 	}
 	hub := NewHub(d.DB, d.StreamLimiter)
 	hub.Register(NewPageBackend(d.DB, d.Pages, d.PagePermissions))
+	if d.Items != nil {
+		hub.Register(NewItemBackend(d.DB, d.Items))
+	}
+	hub.StartSettling()
 	hub.SetOriginPolicy(newOriginPolicy(d.AllowedOrigins, d.DisableCSRF))
 	d.Route("GET /collab/{kind}/{id}/events", d.RequireAuth(http.HandlerFunc(hub.ServeDocument)))
 	d.Route("GET /collab/status", d.RequireAuth(http.HandlerFunc(hub.ServeStatus)))

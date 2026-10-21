@@ -33,6 +33,10 @@ type Hub struct {
 	// probeInterval is how often an open room polls its document for writes
 	// made outside the session.
 	probeInterval time.Duration
+	// settleInterval is how often due bursts of edits are settled.
+	settleInterval time.Duration
+	settleStop     chan struct{}
+	settleDone     chan struct{}
 
 	mu           sync.Mutex
 	rooms        map[string]*room
@@ -49,13 +53,27 @@ const defaultProbeInterval = 2 * time.Second
 // NewHub creates a hub persisting to db. limiter may be nil.
 func NewHub(db database.Database, limiter StreamLimiter) *Hub {
 	return &Hub{
-		store:         NewStore(db),
-		limiter:       limiter,
-		probeInterval: defaultProbeInterval,
-		backends:      make(map[string]Backend),
-		rooms:         make(map[string]*room),
-		conns:         make(map[*conn]struct{}),
+		store:          NewStore(db),
+		limiter:        limiter,
+		probeInterval:  defaultProbeInterval,
+		settleInterval: settleScanInterval,
+		backends:       make(map[string]Backend),
+		rooms:          make(map[string]*room),
+		conns:          make(map[*conn]struct{}),
 	}
+}
+
+// StartSettling settles bursts of edits for backends implementing Settler,
+// until Shutdown. Call after registering backends.
+func (h *Hub) StartSettling() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.settleStop != nil || h.shutdown {
+		return
+	}
+	h.settleStop = make(chan struct{})
+	h.settleDone = make(chan struct{})
+	go h.runSettler(h.settleStop, h.settleDone)
 }
 
 // SetOriginPolicy installs the cross-site check for WebSocket handshakes.
@@ -111,10 +129,22 @@ func (h *Hub) Shutdown(ctx context.Context) error {
 	for _, r := range h.rooms {
 		rooms = append(rooms, r)
 	}
+	settleDone := h.settleDone
+	if h.settleStop != nil {
+		close(h.settleStop)
+		h.settleStop = nil
+	}
 	h.mu.Unlock()
 	for _, r := range rooms {
 		select {
 		case <-r.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if settleDone != nil {
+		select {
+		case <-settleDone:
 		case <-ctx.Done():
 			return ctx.Err()
 		}

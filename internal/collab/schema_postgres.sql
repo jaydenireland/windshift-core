@@ -31,3 +31,26 @@ CREATE TABLE IF NOT EXISTS collab_updates (
     PRIMARY KEY (doc_key, seq),
     FOREIGN KEY (doc_key) REFERENCES collab_documents(doc_key) ON DELETE CASCADE
 );
+
+-- Bursts of live edits waiting to be recorded, for document kinds whose
+-- history and notifications fire once edits go quiet (collab.Settler). A
+-- checkpoint extends the document's open burst; the hub settles a burst once
+-- it is closed (an outside write interrupted it) or quiet long enough.
+-- Timestamps are Unix milliseconds.
+CREATE TABLE IF NOT EXISTS collab_pending_settlements (
+    id BIGSERIAL PRIMARY KEY,
+    doc_key TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    doc_id BIGINT NOT NULL,
+    before_content TEXT NOT NULL,
+    before_hash TEXT NOT NULL,
+    after_content TEXT NOT NULL,
+    after_hash TEXT NOT NULL,
+    editors TEXT NOT NULL DEFAULT '',
+    closed BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 1,
+    last_write_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_collab_pending_settlements_doc ON collab_pending_settlements(doc_key, closed);
+CREATE INDEX IF NOT EXISTS idx_collab_pending_settlements_due ON collab_pending_settlements(kind, last_write_at);

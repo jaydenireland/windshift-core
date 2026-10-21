@@ -1813,6 +1813,7 @@ func (s *Server) initialize() error {
 		DB: s.db, Route: api.HandleH, RequireAuth: authMiddleware.RequireAuth, StreamLimiter: sseHub,
 		AllowedOrigins: csrfOrigins, DisableCSRF: cfg.DisableCSRF,
 		Pages: pageService, PagePermissions: pagePermissionService,
+		Items: itemHandler.ItemUpdateApplicationService(),
 	})
 
 	// Test-only endpoint: gated on WINDSHIFT_E2E_TEST_HOOKS=1. Lets the

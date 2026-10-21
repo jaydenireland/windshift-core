@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"windshift/internal/database"
 )
@@ -154,4 +156,25 @@ func deleteTx(ctx context.Context, tx database.Tx, key string) error {
 		return fmt.Errorf("delete collab document %s: %w", key, err)
 	}
 	return nil
+}
+
+// documentIDs lists the ids of the kind's stored documents.
+func (s *Store) documentIDs(ctx context.Context, kind string) ([]int, error) {
+	prefix := kind + ":"
+	rows, err := s.db.QueryContext(ctx, `SELECT doc_key FROM collab_documents WHERE doc_key LIKE ?`, prefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("list collab documents %s: %w", kind, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("scan collab document key: %w", err)
+		}
+		if id, err := strconv.Atoi(strings.TrimPrefix(key, prefix)); err == nil && strings.HasPrefix(key, prefix) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
 }

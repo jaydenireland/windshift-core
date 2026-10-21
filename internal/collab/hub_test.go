@@ -34,6 +34,9 @@ type fakeBackend struct {
 	access      map[int]Access // by user id
 	checkpoints int
 	finalized   int
+	// db, when set, runs checkpoint callbacks in a transaction like the
+	// real backends do.
+	db database.Database
 }
 
 func newFakeBackend(kind string) *fakeBackend {
@@ -111,6 +114,12 @@ func (b *fakeBackend) Checkpoint(_ context.Context, _ int, id int, md, expected 
 		return Content{}, ErrConflict
 	}
 	next := Content{Markdown: md, Hash: hashOf(md)}
+	if b.db != nil {
+		if err := database.WithTx(b.db, func(tx database.Tx) error { return after(tx, next) }); err != nil {
+			b.mu.Unlock()
+			return Content{}, err
+		}
+	}
 	b.content[id] = next
 	b.checkpoints++
 	b.mu.Unlock()
@@ -733,5 +742,192 @@ func TestInstallRegistersRoutesUnlessDisabled(t *testing.T) {
 		if !routes[pattern] {
 			t.Errorf("route %q not registered (got %v)", pattern, routes)
 		}
+	}
+}
+
+// settlingBackend records history once edits go quiet.
+type settlingBackend struct {
+	*fakeBackend
+	mu      sync.Mutex
+	settled []Settlement
+	gone    bool
+}
+
+func (b *settlingBackend) SettleAfter() time.Duration { return 2 * time.Minute }
+
+func (b *settlingBackend) Settle(_ context.Context, _ int, s Settlement) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.gone {
+		return ErrGone
+	}
+	b.settled = append(b.settled, s)
+	return nil
+}
+
+func (b *settlingBackend) takeSettled() []Settlement {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := b.settled
+	b.settled = nil
+	return out
+}
+
+func newSettlingHarness(t *testing.T) (*harness, *settlingBackend) {
+	t.Helper()
+	h := newHarness(t)
+	h.backend.db = testDB(t)
+	sb := &settlingBackend{fakeBackend: h.backend}
+	h.hub.Register(sb)
+	return h, sb
+}
+
+func checkpointed(t *testing.T, c *client, md, base string, seq int64) {
+	t.Helper()
+	c.send(Message{Type: msgCheckpoint, Markdown: md, Hash: hashOf(base), Seq: seq})
+	if got := c.expect(msgCheckpointed); got.Hash != hashOf(md) {
+		t.Fatalf("checkpointed = %+v", got)
+	}
+}
+
+func TestBurstOfEditsSettlesOnceAfterQuietPeriod(t *testing.T) {
+	h, sb := newSettlingHarness(t)
+	h.backend.set(1, "v1")
+	h.backend.setAccess(10, AccessEdit)
+	h.backend.setAccess(11, AccessEdit)
+
+	a := h.dial(10, 1)
+	a.expect(msgInit)
+	epoch := a.seed("S")
+	b := h.dial(11, 1)
+	b.expect(msgInit)
+
+	// Both type; the leader (10) stores two checkpoints.
+	b.send(Message{Type: msgUpdate, Data: []byte("B1"), Epoch: epoch})
+	b.expect(msgAck)
+	checkpointed(t, a, "v2", "v1", 2)
+	a.send(Message{Type: msgUpdate, Data: []byte("A1"), Epoch: epoch})
+	a.expect(msgAck)
+	b.send(Message{Type: msgUpdate, Data: []byte("B2"), Epoch: epoch})
+	b.expect(msgAck)
+	checkpointed(t, a, "v3", "v2", 4)
+
+	// Not quiet yet: nothing is recorded.
+	h.hub.settleDue(context.Background(), time.Now().Add(time.Minute))
+	if got := sb.takeSettled(); len(got) != 0 {
+		t.Fatalf("settled before quiet period: %+v", got)
+	}
+	h.hub.settleDue(context.Background(), time.Now().Add(2*time.Minute+time.Second))
+	got := sb.takeSettled()
+	if len(got) != 1 {
+		t.Fatalf("settled %d bursts, want 1", len(got))
+	}
+	s := got[0]
+	if s.Before.Markdown != "v1" || s.After.Markdown != "v3" || s.After.Hash != hashOf("v3") {
+		t.Fatalf("settlement = %+v", s)
+	}
+	if fmt.Sprint(s.Editors) != "[10 11]" {
+		t.Fatalf("editors = %v, want typists with the most recent last", s.Editors)
+	}
+
+	// Settled bursts are gone; a later edit starts a new one from v3.
+	h.hub.settleDue(context.Background(), time.Now().Add(time.Hour))
+	if got := sb.takeSettled(); len(got) != 0 {
+		t.Fatalf("settled twice: %+v", got)
+	}
+	a.send(Message{Type: msgUpdate, Data: []byte("A2"), Epoch: epoch})
+	a.expect(msgAck)
+	checkpointed(t, a, "v4", "v3", 5)
+	h.hub.settleDue(context.Background(), time.Now().Add(time.Hour))
+	if got := sb.takeSettled(); len(got) != 1 || got[0].Before.Markdown != "v3" || fmt.Sprint(got[0].Editors) != "[10]" {
+		t.Fatalf("second burst = %+v", got)
+	}
+}
+
+func TestOutsideWriteClosesTheBurstBeforeIt(t *testing.T) {
+	h, sb := newSettlingHarness(t)
+	h.backend.set(1, "v1")
+	h.backend.setAccess(10, AccessEdit)
+
+	a := h.dial(10, 1)
+	a.expect(msgInit)
+	epoch := a.seed("S")
+	a.send(Message{Type: msgUpdate, Data: []byte("U"), Epoch: epoch})
+	a.expect(msgAck)
+	checkpointed(t, a, "v2", "v1", 2)
+
+	// An outside write records its own history; the session's burst must not
+	// include it, so it closes and settles without waiting.
+	h.backend.set(1, "v2 plus agent")
+	h.hub.Notify(h.kind, 1)
+	rec := a.expect(msgReconcile)
+	a.send(Message{Type: msgUpdate, Data: []byte("U2"), Epoch: epoch})
+	a.expect(msgAck)
+	a.send(Message{Type: msgCheckpoint, Markdown: "v2 plus agent and typing", Hash: rec.Hash, Seq: 3})
+	a.expect(msgCheckpointed)
+
+	h.hub.settleDue(context.Background(), time.Now())
+	got := sb.takeSettled()
+	if len(got) != 1 || got[0].Before.Markdown != "v1" || got[0].After.Markdown != "v2" {
+		t.Fatalf("closed burst = %+v", got)
+	}
+	h.hub.settleDue(context.Background(), time.Now().Add(3*time.Minute))
+	got = sb.takeSettled()
+	if len(got) != 1 || got[0].Before.Markdown != "v2 plus agent" || got[0].After.Markdown != "v2 plus agent and typing" {
+		t.Fatalf("burst after the outside write = %+v", got)
+	}
+}
+
+func TestBurstSurvivesRestartAndClaimsOnce(t *testing.T) {
+	h, sb := newSettlingHarness(t)
+	h.backend.set(1, "v1")
+	h.backend.setAccess(10, AccessEdit)
+
+	a := h.dial(10, 1)
+	a.expect(msgInit)
+	epoch := a.seed("S")
+	a.send(Message{Type: msgUpdate, Data: []byte("U"), Epoch: epoch})
+	a.expect(msgAck)
+	checkpointed(t, a, "v2", "v1", 2)
+	a.close()
+
+	// A fresh hub (a restarted server) settles what the old one left.
+	hub := NewHub(testDB(t), nil)
+	hub.Register(sb)
+	ctx := context.Background()
+	due, err := hub.store.dueBursts(ctx, h.kind, time.Now().Add(time.Hour))
+	if err != nil || len(due) != 1 {
+		t.Fatalf("due = %+v, %v", due, err)
+	}
+	// A burst extended after it was read is not claimed.
+	if ok, err := hub.store.claimBurst(ctx, due[0].id, due[0].version+1); ok || err != nil {
+		t.Fatalf("claimed a newer version: %v %v", ok, err)
+	}
+	hub.settleDue(ctx, time.Now().Add(3*time.Minute))
+	if got := sb.takeSettled(); len(got) != 1 || got[0].After.Markdown != "v2" {
+		t.Fatalf("settled after restart = %+v", got)
+	}
+
+	// A burst of a deleted document is dropped.
+	a = h.dial(10, 1)
+	a.expect(msgInit)
+	a.send(Message{Type: msgUpdate, Data: []byte("U3"), Epoch: epoch})
+	a.expect(msgAck)
+	checkpointed(t, a, "v3", "v2", 3)
+	sb.mu.Lock()
+	sb.gone = true
+	sb.mu.Unlock()
+	hub.settleDue(ctx, time.Now().Add(3*time.Minute))
+	if due, _ := hub.store.dueBursts(ctx, h.kind, time.Now().Add(time.Hour)); len(due) != 0 {
+		t.Fatalf("gone burst kept: %+v", due)
+	}
+}
+
+func TestMergeEditorsKeepsMostRecentLast(t *testing.T) {
+	if got := fmt.Sprint(mergeEditors([]int{1, 2, 3}, []int{2, 4, 1})); got != "[3 2 4 1]" {
+		t.Fatalf("mergeEditors = %s", got)
+	}
+	if got := fmt.Sprint(parseEditors(formatEditors([]int{5, 7}))); got != "[5 7]" {
+		t.Fatalf("round trip = %s", got)
 	}
 }
