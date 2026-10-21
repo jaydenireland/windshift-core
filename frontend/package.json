@@ -69,6 +69,7 @@
     "@melt-ui/svelte": "^0.86.6",
     "@milkdown/components": "^7.18.0",
     "@milkdown/kit": "^7.18.0",
+    "@milkdown/plugin-collab": "7.19.0",
     "@milkdown/plugin-listener": "^7.18.0",
     "@milkdown/theme-nord": "^7.18.0",
     "@tabler/icons-svelte-runes": "^3.40.0",
@@ -79,14 +80,19 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "@xyflow/svelte": "^1.5.0",
+    "diff-match-patch": "^1.0.5",
     "dompurify": "3.4.16",
+    "lib0": "^0.2.119",
     "marked": "^18.0.3",
     "mermaid": "^11.16.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "runed": "^0.37.0",
     "shiki": "^4.0.2",
-    "tauri-pty": "^0.2.1"
+    "tauri-pty": "^0.2.1",
+    "y-prosemirror": "^1.3.7",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
   },
   "overrides": {
     "sass": "^1.83.0",

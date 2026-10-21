@@ -4,6 +4,7 @@ import { svelteTesting } from '@testing-library/svelte/vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig } from 'vite';
 import { excalidrawAssetsPlugin } from './scripts/excalidraw-assets.js';
+import { collabVitePlugin } from './vite.collab.js';
 
 // When PLUGIN_DEV_PORTS is set (e.g. "ldap-config=5561,saml-config=5562,..."),
 // add proxy rules that route plugin asset requests to individual Vite dev servers
@@ -34,6 +35,7 @@ export default defineConfig({
     svelteTesting(),
     tailwindcss(),
     excalidrawAssetsPlugin(),
+    collabVitePlugin(),
     ...(enableBundleAnalyzer
       ? [
           visualizer({

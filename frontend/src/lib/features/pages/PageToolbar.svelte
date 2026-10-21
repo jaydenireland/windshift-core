@@ -9,6 +9,7 @@
   import Eye from '@tabler/icons-svelte-runes/icons/eye';
   import { autoGrow } from '../../utils/autoGrowTextarea.js';
   import { t } from '../../stores/i18n.svelte.js';
+  import LivePageStatus from '../../collab/pages/LivePageStatus.svelte';
 
   /** Header of the page pane: save status, work-items popover, the
    * segmented edit/read toggle, canvas width, kebab menu, and title. */
@@ -21,6 +22,7 @@
     statusLabel = '',
     saveStatus = 'idle',
     canEditPage = false,
+    live = null, // live co-editing controller (lib/collab)
     menuItems = [],
     mode = $bindable('edit'),
     canvasExpanded = $bindable(false),
@@ -49,6 +51,7 @@
 
 <div class="flex flex-col items-stretch gap-4 px-(--page-gutter) pt-3">
   <div class="-mr-(--page-gutter) ml-auto flex flex-wrap items-center justify-end gap-2">
+    {#if live}<LivePageStatus {live} />{/if}
     {#if statusLabel && mode === 'edit' && canEditPage}
       <span
         class="min-w-16 text-right text-xs {saveStatus === 'error'

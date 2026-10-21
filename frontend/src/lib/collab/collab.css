@@ -1,0 +1,29 @@
+/* Remote co-editing cursors and selections. collabPresence.js sets
+   --collab-color per collaborator. */
+.milkdown-editor .ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 2px solid var(--collab-color);
+  word-break: normal;
+  pointer-events: none;
+}
+
+.milkdown-editor .ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.35em;
+  left: -2px;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem 0.25rem 0.25rem 0;
+  background: var(--collab-color);
+  color: var(--ds-text-inverse, white);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.milkdown-editor .ProseMirror-yjs-selection {
+  background-color: color-mix(in srgb, var(--collab-color) 22%, transparent);
+}

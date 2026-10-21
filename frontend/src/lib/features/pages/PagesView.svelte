@@ -21,6 +21,8 @@
   import { mergePageUpdate } from './pageState.js';
   import { agentRuns } from '../../stores/agentRuns.svelte.js';
   import { workspacePermissions } from '../../stores/workspacePermissions.svelte.js';
+  import { useLivePage, omitNullBody } from '../../collab/pages/livePage.svelte.js';
+  import LivePageNotices from '../../collab/pages/LivePageNotices.svelte';
 
   /** Right-pane knowledge-page editor with sidebar-owned tree/actions and
    * debounced autosave instead of an explicit Save button.
@@ -93,6 +95,21 @@
 
   let headings = $derived(parseMarkdownHeadings(draftContent));
 
+  // Live co-editing of the body (lib/collab); a pass-through when unavailable.
+  const live = useLivePage({
+    page: () => selectedPage,
+    workspaceId: () => workspaceId,
+    apply: (page, { body }) => {
+      if (body) {
+        selectedPage = { ...selectedPage, content: page.content, content_hash: page.content_hash };
+        draftContent = page.content;
+      } else {
+        selectedPage = { ...page, content: selectedPage.content, content_hash: selectedPage.content_hash };
+        if (!dirty) draftTitle = page.title;
+      }
+    },
+  });
+
   onMount(async () => {
     if (pageId) {
       selectedId = pageId;
@@ -106,6 +123,7 @@
   onMount(() => agentRuns.subscribe(() => {
     pagesTreeRefresh.bump();
     if (!selectedPage?.id || dirty || saveInFlight) return;
+    if (live.active) return void live.refreshMeta();
     loadPage(selectedPage.id);
   }));
 
@@ -288,7 +306,7 @@
       pageId: selectedPage.id,
       previousTitle: selectedPage.title,
       title: draftTitle,
-      content: draftContent,
+      content: live.active ? null : draftContent,
       expectedContentHash: selectedPage.content_hash,
     };
     return pageAutosaveQueue.enqueue(snapshot.pageId, snapshot);
@@ -302,12 +320,12 @@
     }
     saveInFlight = true;
     try {
-      const updated = await pages.updatePage(targetWorkspaceId, targetId, {
+      const updated = await pages.updatePage(targetWorkspaceId, targetId, omitNullBody({
         title: snapshot.title,
         content: snapshot.content,
         expectedContentHash:
           contentHashByPageId.get(targetId) ?? snapshot.expectedContentHash,
-      });
+      }));
       contentHashByPageId.set(targetId, updated.content_hash);
       // Only fold the response back into local state if we're still on
       // the same page; a fast-switching user has already moved on.
@@ -319,10 +337,10 @@
         // ship it; only clear `dirty` when the snapshot we sent is
         // still the current draft.
         const stillClean =
-          draftTitle === snapshot.title && draftContent === snapshot.content;
+          draftTitle === snapshot.title && (snapshot.content === null || draftContent === snapshot.content);
         if (stillClean) {
           draftTitle = updated.title;
-          draftContent = updated.content;
+          if (snapshot.content !== null) draftContent = updated.content;
           dirty = false;
           saveStatus = 'saved';
         } else {
@@ -379,6 +397,7 @@
   function onContentInput(value) {
     if (!selectedPage) return;
     draftContent = value;
+    if (live.active) return;
     if (value !== selectedPage.content || draftTitle !== selectedPage.title) {
       dirty = true;
       scheduleAutoSave();
@@ -386,7 +405,7 @@
   }
 
   function onDiagramPersisted({ contentHash, pageContent }) {
-    if (!selectedPage) return;
+    if (!selectedPage || live.active) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
@@ -433,13 +452,13 @@
       selectedPage.metadata = metadata;
       selectedPage = selectedPage;
 
-      const updated = await pages.updatePage(targetWorkspaceId, targetPageId, {
+      const updated = await pages.updatePage(targetWorkspaceId, targetPageId, live.bodyless({
         title: draftTitle,
         content: draftContent,
         metadata,
         expectedContentHash:
           contentHashByPageId.get(targetPageId) ?? selectedPage.content_hash,
-      });
+      }));
       contentHashByPageId.set(targetPageId, updated.content_hash);
       if (selectedPage?.id === updated.id) {
         selectedPage = mergePageUpdate(selectedPage, updated, draftContent);
@@ -608,6 +627,7 @@
       {t('pages.pageLoading')}
     </p>
   {:else if selectedPage}
+    <LivePageNotices {live} />
     {#if pagePublication?.publicly_viewable}
       <!-- Green status bar above the page when a portal knowledge base
            publishes it. Sits outside the centered page frame so the bar
@@ -643,6 +663,7 @@
         {statusLabel}
         {saveStatus}
         {canEditPage}
+        {live}
         menuItems={toolbarMenuItems}
         bind:mode
         bind:canvasExpanded
@@ -672,11 +693,13 @@
           entityId={selectedPage.id}
           {workspaceId}
           bind:content={draftContent}
-          readonly={mode === 'read' || !canEditPage}
-          expectedContentHash={selectedPage.content_hash}
-          onBeforeDiagramOpen={flushSave}
+          readonly={live.readonly(mode === 'read' || !canEditPage)}
+          expectedContentHash={live.diagramHash(selectedPage.content_hash)}
+          onBeforeDiagramOpen={live.beforeDiagramOpen(flushSave)}
           onDiagramPersisted={onDiagramPersisted}
           onContentChange={onContentInput}
+          collab={live.editorSession}
+          collabKey={live.editorKey}
         />
         {#if mode === 'read' && headings.length > 0}
           <PageToc {headings} onselect={scrollToHeading} />
@@ -713,7 +736,8 @@
     pageId={selectedPage.id}
     canRestore={pageEffectiveLevel === 'edit' || pageEffectiveLevel === 'admin'}
     onRestored={async () => {
-      if (selectedPage) await loadPage(selectedPage.id);
+      if (live.active) await live.refreshMeta();
+      else if (selectedPage) await loadPage(selectedPage.id);
     }}
   />
 {/if}

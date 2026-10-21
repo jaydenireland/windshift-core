@@ -35,6 +35,7 @@
   import { excalidrawBlock } from './milkdown-excalidraw-block.svelte.js';
   import PageDiagramModal from '../features/pages/PageDiagramModal.svelte';
   import { highlightCodeBlocks } from './code-highlight.js';
+  import { prepareCollabBinding } from '../collab/milkdownBinding.js';
   import { t } from '../stores/i18n.svelte.js';
   import { attachmentStatus } from '../stores/attachmentStatus.svelte.js';
   import { navigate } from '../router.js';
@@ -51,6 +52,7 @@
     expectedContentHash = '',
     onBeforeDiagramOpen = async () => {},
     onDiagramPersisted = (_payload) => {},
+    collab = null, // live co-editing session (lib/collab)
     testId = null
   } = $props();
 
@@ -106,6 +108,7 @@
   let editor = $state(null);
   let disposed = false;
   let initialContent = content;
+  let collabBinding = null;
 
   async function destroyEditor(target) {
     if (!target) return;
@@ -483,7 +486,7 @@
 
   function handleDiagramSaved({ attachmentId, name, contentHash, pageContent }) {
     if (!editor) return;
-    editor.action(replaceAll(pageContent || ''));
+    if (!collabBinding?.bound) editor.action(replaceAll(pageContent || ''));
     onDiagramPersisted({ attachmentId, name, contentHash, pageContent });
   }
 
@@ -522,10 +525,13 @@
 
   onMount(async () => {
     try {
+      collabBinding = await prepareCollabBinding(collab);
+      if (disposed) return;
       const builder = Editor.make()
         .config((ctx) => {
           ctx.set(rootCtx, editorElement);
           ctx.set(defaultValueCtx, initialContent || '');
+          collabBinding?.configure(ctx);
           // Parse `<br>`-style html as hard breaks (see milkdown-hardbreak.js).
           // Registered through remarkPluginsCtx here — config runs before the
           // schema step snapshots the remark processor; a `.use($remark)`
@@ -618,6 +624,7 @@
       if (enableDiagrams) {
         builder.use(excalidrawBlock);
       }
+      collabBinding?.use(builder);
 
       const created = await builder.create();
       if (disposed) {
@@ -627,6 +634,7 @@
         return;
       }
       editor = created;
+      collabBinding?.attach(created);
     } catch (error) {
       if (!disposed) {
         console.error('Failed to initialize Milkdown editor:', error);
@@ -658,6 +666,7 @@
 
   onDestroy(async () => {
     disposed = true;
+    collabBinding?.detach();
     if (hoverCardTimeout) {
       clearTimeout(hoverCardTimeout);
     }
@@ -723,7 +732,7 @@
   }
 
   export function clear() {
-    if (editor && !readonly) {
+    if (editor && !readonly && !collabBinding?.bound) {
       editor.action(replaceAll(''));
       content = '';
     }
@@ -844,7 +853,7 @@
 
   // Keep readonly renders in sync when underlying markdown changes
   $effect(() => {
-    if (editor && readonly) {
+    if (editor && readonly && !collabBinding?.bound) {
       editor.action(replaceAll(content || ''));
       requestAnimationFrame(() => {
         highlightCodeBlocks(editorElement).catch((e) => console.warn('code highlight failed', e));
