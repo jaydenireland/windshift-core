@@ -535,6 +535,12 @@ import NativeSelect from '../../components/NativeSelect.svelte';
     itemDetailStore.startEditing('project');
   }
 
+  function handleStartEditingTitle() {
+    // Cancel all custom field editing when starting to edit title
+    itemDetailStore.editing.customFields.active = {};
+    itemDetailStore.startEditing('title');
+  }
+
   function handleStartEditingDescription() {
     // Cancel all custom field editing when starting to edit description
     itemDetailStore.editing.customFields.active = {};
@@ -1414,6 +1420,7 @@ import NativeSelect from '../../components/NativeSelect.svelte';
     onstartEditingEndDate={handleStartEditingEndDate}
     onstartEditingStatus={handleStartEditingStatus}
     onstartEditingProject={handleStartEditingProject}
+    onstartEditingTitle={handleStartEditingTitle}
     onstartEditingDescription={handleStartEditingDescription}
     onstartEditingCustomField={handleStartEditingCustomField}
     onstartTimer={handleStartTimer}

@@ -469,6 +469,7 @@ export default {
     clickToEditDescription: 'Click to edit description',
     clickToAddDescription: 'Click to add description',
     noDescriptionProvided: 'No description provided - click to add one',
+    descriptionChangedElsewhere: 'This description was changed elsewhere while you were editing. Save to overwrite that change, or Cancel to discard your draft and see the latest version.',
     addLink: 'Add Link',
     createChild: 'Create Child',
     child: 'Child',

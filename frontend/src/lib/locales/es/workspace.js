@@ -284,6 +284,7 @@ export default {
     clickToEditDescription: 'Haga clic para editar la descripción',
     clickToAddDescription: 'Haga clic para agregar una descripción',
     noDescriptionProvided: 'Sin descripción proporcionada - haga clic para agregar una',
+    descriptionChangedElsewhere: 'Esta descripción se modificó en otro lugar mientras la editaba. Guarde para sobrescribir ese cambio o elija «Cancelar» para descartar su borrador y ver la versión más reciente.',
     addLink: 'Agregar enlace',
     createChild: 'Crear secundario',
     child: 'Secundario',

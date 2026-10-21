@@ -361,6 +361,7 @@ export default {
     clickToEditDescription: 'Cliquer pour modifier la description',
     clickToAddDescription: 'Cliquer pour ajouter une description',
     noDescriptionProvided: 'Aucune description fournie - cliquer pour en ajouter une',
+    descriptionChangedElsewhere: 'Cette description a été modifiée ailleurs pendant votre édition. Enregistrez pour écraser cette modification, ou choisissez « Annuler » pour abandonner votre brouillon et afficher la version la plus récente.',
     addLink: 'Ajouter un lien',
     createChild: 'Créer un enfant',
     child: 'Enfant',

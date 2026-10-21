@@ -284,6 +284,7 @@ export default {
     clickToEditDescription: 'انقر لتعديل الوصف',
     clickToAddDescription: 'انقر لإضافة وصف',
     noDescriptionProvided: 'لا يوجد وصف - انقر لإضافة واحد',
+    descriptionChangedElsewhere: 'تم تغيير هذا الوصف في مكان آخر أثناء تحريرك له. احفظ لاستبدال هذا التغيير، أو اختر «إلغاء» لتجاهل مسودتك وعرض أحدث إصدار.',
     addLink: 'إضافة رابط',
     createChild: 'إنشاء فرع',
     child: 'فرع',

@@ -1,6 +1,7 @@
 <script>
   import { Link2, Plus, Paperclip, PenTool, Zap, ChevronDown } from '@lucide/svelte';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import AlertBox from '../../components/AlertBox.svelte';
   import Button from '../../components/Button.svelte';
   import FileInput from '../../components/FileInput.svelte';
   import MilkdownEditor from '../../editors/LazyMilkdownEditor.svelte';
@@ -52,8 +53,11 @@
   let showActionsMenu = $state(false);
   let actionsMenuRef = $state(null);
 
-  // Local state for editor content (initialized from prop when editing starts)
+  // The open editor's draft, and the description it started from.
   let editorContent = $state('');
+  let editorBase = $state('');
+  // The item the open editor was seeded for; undefined while it is closed.
+  let editorItemId;
 
   // Handle image insertions from attachments or uploads
   export function insertImage(imageData) {
@@ -102,24 +106,47 @@
     startEditingDescription();
   }
 
-  // Initialize editor content when editing starts
-  $effect(() => {
-    if (editingDescription) {
-      editorContent = editDescription;
-    }
+  // Seed the draft once per editing session, and again only if the item
+  // changes under an open editor. The editable Milkdown editor reads its
+  // content once at mount, so re-seeding on later store updates (another
+  // field's edit, a live reload) would make Save send something other than
+  // what is on screen. Runs before the editor mounts so it starts seeded.
+  $effect.pre(() => {
+    const itemId = editingDescription ? item.id : undefined;
+    if (itemId === editorItemId) return;
+    editorItemId = itemId;
+    if (itemId === undefined) return;
+    untrack(() => {
+      editorBase = editDescription || '';
+      editorContent = editorBase;
+    });
   });
 
-  // Focus editor when it becomes available during editing
-  // Both dependencies must be at the top level to be tracked properly
+  // Focus each newly mounted editor. Only the instance is tracked: the
+  // editing props re-evaluate on unrelated store updates, which must not
+  // pull focus here or move the caret.
   $effect(() => {
-    const isEditing = editingDescription;
     const editor = milkdownEditor;
-    if (isEditing && editor) {
+    if (editor) {
       tick().then(() => editor.focusEnd());
     }
   });
 
+  // The description changed elsewhere (another user, an agent run) while the
+  // editor was open. The draft stays; Save replaces that change, and Cancel
+  // drops the draft and shows the newer text.
+  const descriptionChangedElsewhere = $derived.by(() => {
+    const latest = item.description || '';
+    return latest !== editorBase && latest !== editorContent;
+  });
+
   function saveDescription() {
+    // An untouched draft is not an edit: saving its starting text would revert
+    // a change made elsewhere while the editor was open.
+    if (editorContent === editorBase) {
+      cancelEdit();
+      return;
+    }
     onsavefield?.({ field: 'description', value: editorContent });
   }
 
@@ -171,15 +198,21 @@
   {#if editingDescription}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="space-y-3" onkeydown={handleKeydown} data-testid="item-description-editor">
-      <MilkdownEditor
-        bind:this={milkdownEditor}
-        bind:content={editorContent}
-        placeholder={t('items.enterDescription')}
-        showToolbar={true}
-        itemId={item.id}
-        workspaceId={item.workspace_id}
-        onImageInsert={handleImageInsert}
-      />
+      <!-- Remount when the item changes so the editor shows the re-seeded draft. -->
+      {#key item.id}
+        <MilkdownEditor
+          bind:this={milkdownEditor}
+          bind:content={editorContent}
+          placeholder={t('items.enterDescription')}
+          showToolbar={true}
+          itemId={item.id}
+          workspaceId={item.workspace_id}
+          onImageInsert={handleImageInsert}
+        />
+      {/key}
+      {#if descriptionChangedElsewhere}
+        <AlertBox variant="warning" message={t('items.descriptionChangedElsewhere')} />
+      {/if}
       <div class="flex items-center gap-2">
         <Button variant="primary" onclick={saveDescription} disabled={saving} keyboardHint={getDisplayString(saveShortcut)} dataTestid="item-description-save">
           {t('common.save')}

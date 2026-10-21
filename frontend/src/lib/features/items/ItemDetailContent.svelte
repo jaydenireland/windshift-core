@@ -24,8 +24,8 @@
     currentItemType = null,
     currentHierarchyLevel = null,
     workspaceId = null,
-    editingTitle = $bindable(false),
-    editTitle = $bindable(''),
+    editingTitle = false,
+    editTitle = '',
     saving = false,
     canEdit = false,
     dropdownItems = [],
@@ -94,6 +94,7 @@
     onstartEditingEndDate = null,
     onstartEditingStatus = null,
     onstartEditingProject = null,
+    onstartEditingTitle = null,
     onstartEditingDescription = null,
     onstartEditingCustomField = null,
     onstartTimer = null,
@@ -362,10 +363,11 @@
           <ItemDetailHeader
             {item}
             {workspace}
-            bind:editingTitle
-            bind:editTitle
+            {editingTitle}
+            {editTitle}
             {saving}
             {canEdit}
+            onstartEditingTitle={() => onstartEditingTitle?.()}
             onsavefield={handleSaveField}
             oncanceledit={handleCancelEdit}
           />

@@ -285,6 +285,7 @@ export default {
     clickToEditDescription: '点击编辑描述',
     clickToAddDescription: '点击添加描述',
     noDescriptionProvided: '暂无描述 - 点击添加',
+    descriptionChangedElsewhere: '您编辑期间，此描述已在其他地方被修改。保存将覆盖该修改；选择“取消”可放弃您的草稿并查看最新版本。',
     addLink: '添加链接',
     createChild: '创建子项',
     child: '子项',

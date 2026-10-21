@@ -284,6 +284,7 @@ export default {
     clickToEditDescription: 'Clique para editar a descrição',
     clickToAddDescription: 'Clique para adicionar descrição',
     noDescriptionProvided: 'Nenhuma descrição fornecida - clique para adicionar uma',
+    descriptionChangedElsewhere: 'Esta descrição foi alterada em outro lugar enquanto você a editava. Salve para substituir essa alteração ou escolha “Cancelar” para descartar seu rascunho e ver a versão mais recente.',
     addLink: 'Adicionar Link',
     createChild: 'Criar Filho',
     child: 'Filho',

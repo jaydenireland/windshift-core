@@ -310,10 +310,17 @@ class ItemDetailStore {
       this.workspaceScreenSystemFields = [];
       this.editableScreenFieldIds = null;
       this.editableScreenSystemFields = null;
+      // A reload of the item on screen (live updates, focus refresh, approval
+      // changes) must not disturb fields being edited; another item starts
+      // with nothing in edit mode.
+      if (this.item == null || String(this.item.id) !== String(itemData.id)) {
+        this.editing = { ...DEFAULT_EDITING_STATE };
+      }
       this.item = itemData;
       if (this.item.assignee_id === undefined) {
         this.item.assignee_id = null;
       }
+      this.#syncInactiveEditingFromItem();
 
       // Use provided/resolved workspaceId or derive from item
       const wsId = effectiveWorkspaceId || itemData.workspace_id;
@@ -380,7 +387,6 @@ class ItemDetailStore {
 
       // Heavy optional panels such as diagrams, worklogs, history, SCM detail,
       // and agent logs remain deferred behind their existing loaders.
-      this.#syncEditingFromItem();
       await fieldConfigPromise;
       // Screen-field hydration can outlive this request; a newer load that
       // started meanwhile owns the store now.
@@ -1129,44 +1135,33 @@ class ItemDetailStore {
 
   // === Auto-sync editing values when item loads/changes ===
 
-  #syncEditingFromItem() {
-    if (!this.item) return;
-    for (const [editKey, itemKey] of Object.entries(FIELD_MAP)) {
-      if (editKey === 'milestone') {
-        // milestones is an array of objects on the item; the editing value
-        // tracks the array of IDs the picker binds to.
-        this.editing[editKey].value = (this.item.milestones || []).map((m) => m.id);
-        continue;
-      }
-      this.editing[editKey].value = STRING_FIELDS.has(editKey)
-        ? this.item[itemKey] || ''
-        : this.item[itemKey];
+  // The value an edit of the field starts from. Empty text starts as '' (not
+  // null) so every sync path produces the same value for an unchanged item.
+  #editingValueFromItem(editKey) {
+    if (editKey === 'milestone') {
+      // milestones is an array of objects on the item; the editing value
+      // tracks the array of IDs the picker binds to.
+      return (this.item.milestones || []).map((m) => m.id);
     }
-    this.editing.customFields.values = { ...(this.item.custom_field_values || {}) };
+    const value = this.item[FIELD_MAP[editKey]];
+    return STRING_FIELDS.has(editKey) ? value || '' : value;
   }
 
   #syncFieldFromItem(field) {
     if (!this.item) return;
     if (FIELD_MAP[field] && this.editing[field]) {
-      if (field === 'milestone') {
-        this.editing[field].value = (this.item.milestones || []).map((m) => m.id);
-        return;
-      }
-      this.editing[field].value = this.item[FIELD_MAP[field]];
+      this.editing[field].value = this.#editingValueFromItem(field);
     }
   }
 
+  // Fields being edited keep their editing value: where the open edit started
+  // (title, description) or the draft itself (custom fields). Nested writes are
+  // reactive on their own; reassigning `editing` would re-run every consumer.
   #syncInactiveEditingFromItem() {
     if (!this.item) return;
-    for (const [editKey, itemKey] of Object.entries(FIELD_MAP)) {
+    for (const editKey of Object.keys(FIELD_MAP)) {
       if (this.editing[editKey]?.active) continue;
-      if (editKey === 'milestone') {
-        this.editing[editKey].value = (this.item.milestones || []).map((m) => m.id);
-        continue;
-      }
-      this.editing[editKey].value = STRING_FIELDS.has(editKey)
-        ? this.item[itemKey] || ''
-        : this.item[itemKey];
+      this.editing[editKey].value = this.#editingValueFromItem(editKey);
     }
 
     const nextCustomValues = { ...(this.item.custom_field_values || {}) };
@@ -1176,7 +1171,6 @@ class ItemDetailStore {
       }
     }
     this.editing.customFields.values = nextCustomValues;
-    this.editing = { ...this.editing };
   }
 
   #mergeItemPreservingActiveEdits(current, next) {
@@ -1184,7 +1178,10 @@ class ItemDetailStore {
     const merged = { ...current, ...next };
 
     for (const [editKey, itemKey] of Object.entries(FIELD_MAP)) {
-      if (!this.editing[editKey]?.active) continue;
+      // Title and description drafts live in their editors, so the item can
+      // take the server's text: the description editor flags the change, and
+      // cancelling shows the newer text.
+      if (!this.editing[editKey]?.active || STRING_FIELDS.has(editKey)) continue;
 
       if (editKey === 'milestone') {
         merged.milestones = current.milestones;

@@ -359,6 +359,7 @@ export default {
     "clickToEditDescription": "클릭하여 설명 편집",
     "clickToAddDescription": "클릭하여 설명 추가",
     "noDescriptionProvided": "설명이 없습니다 — 클릭하여 추가",
+    "descriptionChangedElsewhere": "편집하는 동안 이 설명이 다른 곳에서 변경되었습니다. 저장하면 해당 변경 내용을 덮어쓰고, ‘취소’를 선택하면 초안을 버리고 최신 버전을 볼 수 있습니다.",
     "addLink": "연결 추가",
     "createChild": "하위 작업 만들기",
     "child": "하위 작업",

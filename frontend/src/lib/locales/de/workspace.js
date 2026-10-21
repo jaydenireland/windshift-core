@@ -288,6 +288,7 @@ export default {
     clickToEditDescription: 'Klicken, um Beschreibung zu bearbeiten',
     clickToAddDescription: 'Klicken, um Beschreibung hinzuzufügen',
     noDescriptionProvided: 'Keine Beschreibung vorhanden - Klicken, um eine hinzuzufügen',
+    descriptionChangedElsewhere: 'Diese Beschreibung wurde während Ihrer Bearbeitung an anderer Stelle geändert. Speichern Sie, um diese Änderung zu überschreiben, oder wählen Sie „Abbrechen“, um Ihren Entwurf zu verwerfen und die aktuelle Version anzuzeigen.',
     addLink: 'Verknüpfung hinzufügen',
     createChild: 'Untergeordnet erstellen',
     child: 'Untergeordnet',
