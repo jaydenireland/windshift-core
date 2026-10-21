@@ -1,6 +1,7 @@
 # Fork notes: live co-editing
 
-This fork adds live co-editing of knowledge pages on top of
+This fork adds live co-editing of knowledge pages and work-item descriptions on
+top of
 [Windshiftapp/core](https://github.com/Windshiftapp/core). The feature is kept
 almost entirely in fork-owned files so merging upstream stays routine. This
 file lists everything the fork changes in upstream-owned files and how to
@@ -10,13 +11,15 @@ merge.
 
 | Path | What it is |
 | --- | --- |
-| `internal/collab/` | Co-editing server: WebSocket relay, rooms, update log, page backend, its own schema (`schema_*.sql`, created by `collab.Install`) |
-| `internal/services/page_collab.go` | Checkpoint writes for live sessions. Lives in `services` to reuse unexported page helpers; changes no existing code |
-| `frontend/src/lib/collab/` | Browser session (Yjs), Milkdown binding, merge, presence, strings for all locales, page-view controller and components |
+| `internal/collab/` | Co-editing server: WebSocket relay, rooms, update log, page and item backends, settling of item edits, its own schema (`schema_*.sql`, created by `collab.Install`) |
+| `internal/services/page_collab.go` | Checkpoint writes for live page sessions. Lives in `services` to reuse unexported page helpers; changes no existing code |
+| `internal/services/item_collab.go` | Silent description checkpoints and the settled history/event/notification step for items. Same reasoning as `page_collab.go` |
+| `frontend/src/lib/collab/` | Browser session (Yjs), Milkdown binding, merge, presence, strings for all locales, page and item-description controllers and components |
 | `frontend/vite.collab.js` | Vite settings for co-editing, added as a plugin |
 | `FORK.md` | This file |
 
 Tests: `internal/collab/hub_test.go`, `internal/services/page_collab_test.go`,
+`internal/services/item_collab_test.go`,
 `frontend/src/lib/collab/*.spec.js` (force-added; the repo ignores test files
 by default).
 
@@ -33,11 +36,12 @@ git diff upstream/main -- . ':!internal/collab' ':!frontend/src/lib/collab' \
 | File | Seam |
 | --- | --- |
 | `internal/server/server.go` | Import plus one `collab.Install(...)` call after `routes.RegisterAll`. Shutdown hooks itself via `http.Server.RegisterOnShutdown` |
-| `frontend/src/lib/editors/MilkdownEditor.svelte` | `collab` prop; `prepareCollabBinding` call sites in mount/destroy; three `!collabBinding?.bound` guards on whole-document replacements |
+| `frontend/src/lib/editors/MilkdownEditor.svelte` | `collab` prop; `prepareCollabBinding` call sites in mount/destroy (destroy awaits the binding's detach); three `!collabBinding?.bound` guards on whole-document replacements |
 | `frontend/src/lib/editors/LazyMilkdownEditor.svelte` | Passes `collab`; re-keys on `collabKey` |
 | `frontend/src/lib/features/pages/PagesView.svelte` | `useLivePage(...)`; `<LivePageNotices>`; passes `live` to the toolbar and editor props; title/appearance saves omit the body while live (`omitNullBody`, `live.bodyless`) |
 | `frontend/src/lib/features/pages/PageEditor.svelte` | Passes `collab`/`collabKey` to the editor |
 | `frontend/src/lib/features/pages/PageToolbar.svelte` | `live` prop rendering `<LivePageStatus>` |
+| `frontend/src/lib/features/items/ItemDetailDescription.svelte` | `useLiveItemDescription(...)`; passes `collab`/`collabKey`/`readonly` to the editor; `<LiveItemDescriptionBar>` (Done) instead of Save/Cancel while live; Escape and Cmd/Ctrl+Enter finish a live edit; shows the just-edited text until the item reloads |
 | `frontend/vite.config.js` | Import plus `collabVitePlugin()` |
 | `frontend/package.json`, `go.mod` | Dependencies: `yjs`, `y-prosemirror`, `y-protocols`, `lib0`, `@milkdown/plugin-collab` (pinned to the installed Milkdown version), `diff-match-patch`; `github.com/coder/websocket` |
 | Generated: `frontend/package-lock.json`, `go.sum`, `frontend/src/lib/generated/license-manifest.json` | Regenerate rather than hand-merge (below) |
@@ -85,12 +89,36 @@ cd frontend && npm run check && npm run typecheck && npx vitest run src/lib/coll
 upstream renames them, the build fails there, never silently. `PageBackend.Probe`
 reads `pages.content_hash`, `title`, `metadata` and `archived_at` directly.
 
+`item_collab.go` likewise uses `ItemUpdateApplicationService`'s fields and
+`itemEventMetadata`, `stampHistorySource`, `itemHistoryEventChanges`,
+`recordItemHistory`, `loadItemWithJoins` and `ItemRepository.UpdateFields`.
+`ItemBackend.Probe` reads `items.description` and `merged_into_item_id`. If
+upstream adds side effects to description saves (in `updateItem`), mirror them
+in `SettleCollabDescription`.
+
+## Item descriptions: when history and notifications fire
+
+A live description saves itself every few seconds with no history, domain
+event, notification, automation or webhook. Each checkpoint extends the item's
+open "burst" (`collab_pending_settlements`). Once a burst has had no new
+writes for two minutes (`collab.ItemSettleAfter`), the hub records it as one
+ordinary description change: one history entry (old text before the burst,
+new text after), one `item.updated` event (which drives notifications and
+automations), webhooks and @mention notifications, attributed to the person
+who typed last. A write made outside the session (API, agent) closes the open
+burst first, so it is recorded on its own and never folded into the session's
+change. Bursts are durable: ones pending at shutdown settle after restart.
+
 ## Runtime
 
-- Tables `collab_documents` and `collab_updates` are created at startup with
+- Tables `collab_documents`, `collab_updates` and
+  `collab_pending_settlements` are created at startup with
   `CREATE ... IF NOT EXISTS`. Keep future changes to them idempotent and
-  additive. Dropping co-editing later: drop both tables.
+  additive. Dropping co-editing later: drop the three tables (settle pending
+  bursts first, or their history is never recorded).
+- Items are hard-deleted without a foreign key to co-editing state; the hub
+  prunes state of deleted items hourly.
 - `WINDSHIFT_DISABLE_COLLAB=1` turns co-editing off; the page editor falls back
-  to upstream's autosave.
+  to upstream's autosave and item descriptions to their Save button.
 - Single server process only (sessions live in memory, like upstream's live
   updates).

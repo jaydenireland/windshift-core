@@ -2,6 +2,9 @@ import { defaultValueCtx, parserCtx, schemaCtx, serializerCtx } from '@milkdown/
 import { collabCursorOptions } from './collabPresence.js';
 import './collab.css';
 
+// Milkdown's listener debounces markdown updates by 200ms.
+const LISTENER_SETTLE_MS = 250;
+
 /**
  * Prepare a Milkdown editor's co-editing binding, or null without a session.
  *
@@ -20,6 +23,7 @@ export async function prepareCollabBinding(session) {
   const bound = !!session.state?.seeded;
   const plugin = bound ? await import('@milkdown/plugin-collab') : null;
   let codec = null;
+  let attached = null;
   return {
     /** Whether the editor shows the shared document. */
     bound,
@@ -49,10 +53,34 @@ export async function prepareCollabBinding(session) {
         };
       });
       session.attachCodec(codec);
+      attached = editor;
     },
-    /** Call when the editor is destroyed. */
+    /**
+     * Call when the editor is destroyed; await it before destroying the
+     * editor. Milkdown's listener serializes each change after a debounce,
+     * reading the editor view, and a bound editor keeps receiving remote
+     * changes up to this point. Destroying the editor inside that window
+     * throws, so the editor outlives the last scheduled run.
+     */
     detach() {
-      if (codec) session.detachCodec(codec);
+      if (plugin && attached) {
+        // Stop the shared document from driving a view that is going away.
+        try {
+          attached.action((ctx) => ctx.get(plugin.collabServiceCtx).disconnect());
+        } catch {
+          // The editor is already torn down.
+        }
+      }
+      attached = null;
+      // The codec stays lent until the editor goes, so a session closing at
+      // the same time can still store its final checkpoint.
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          if (codec) session.detachCodec(codec);
+          codec = null;
+          resolve();
+        }, LISTENER_SETTLE_MS)
+      );
     },
   };
 }

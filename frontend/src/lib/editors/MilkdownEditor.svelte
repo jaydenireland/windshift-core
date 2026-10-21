@@ -666,7 +666,7 @@
 
   onDestroy(async () => {
     disposed = true;
-    collabBinding?.detach();
+    await collabBinding?.detach();
     if (hoverCardTimeout) {
       clearTimeout(hoverCardTimeout);
     }

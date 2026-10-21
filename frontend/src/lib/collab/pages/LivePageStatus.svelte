@@ -3,8 +3,8 @@
   import { collabColor } from '../collabPresence.js';
   import { collabText } from '../strings.js';
 
-  /** Live indicator and who else is on the page, for the page toolbar. */
-  let { live } = $props();
+  /** Live indicator and who else is on the document, for a toolbar. */
+  let { live, testidPrefix = 'page', peopleLabel = collabText('peopleAria') } = $props();
 
   let label = $derived.by(() => {
     if (!live.active) return live.pending ? collabText('connecting') : '';
@@ -23,7 +23,7 @@
   <span
     class="live-status"
     class:live-status--offline={live.active && live.state?.status !== 'open'}
-    data-testid="page-live-status"
+    data-testid="{testidPrefix}-live-status"
     data-status={live.active ? live.state?.status : 'pending'}
   >
     <span class="live-status__dot" aria-hidden="true"></span>
@@ -31,13 +31,13 @@
   </span>
 {/if}
 {#if live.people.length > 0}
-  <div class="live-people" data-testid="page-live-people" aria-label={collabText('peopleAria')}>
+  <div class="live-people" data-testid="{testidPrefix}-live-people" aria-label={peopleLabel}>
     {#each live.people.slice(0, 5) as person (person.user_id)}
       <Tooltip content={person.name} placement="bottom">
         <span
           class="live-person"
           style="--collab-color: {collabColor(person.user_id)}"
-          data-testid="page-live-person"
+          data-testid="{testidPrefix}-live-person"
           data-user-id={person.user_id}
         >
           {#if person.avatar_url}
