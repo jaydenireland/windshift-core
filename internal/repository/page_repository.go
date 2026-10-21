@@ -279,6 +279,11 @@ type UpdateInput struct {
 	// Unarchive clears archived_at/archived_by while applying the update.
 	// Used by restore; normal title/content edits leave archive state alone.
 	Unarchive bool
+	// ExpectedContentHash, when set, applies the update only if the stored
+	// content_hash still equals it. The check lives in the UPDATE because a
+	// plain SELECT earlier in a PostgreSQL (READ COMMITTED) transaction takes
+	// no lock, so a concurrent save can commit between that read and this write.
+	ExpectedContentHash *string
 }
 
 // UpdateTx applies a content/title/slug/inheritance edit within a transaction.
@@ -286,6 +291,9 @@ type UpdateInput struct {
 // by MoveTx and SetFracIndexTx so a normal title/content save can't silently
 // destroy a drag-and-drop ordering. Move and Archive are separate methods
 // because they touch parent_id/path/depth and archived_* fields respectively.
+//
+// Returns ErrNotFound when the page does not exist, and ErrConcurrentUpdate
+// when in.ExpectedContentHash no longer matches the stored hash.
 func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 	now := time.Now().UTC()
 	query := `
@@ -298,7 +306,7 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 		    inherit_permissions = ?,
 		    updated_by = ?,
 		    updated_at = ?`
-	args := make([]any, 0, 10)
+	args := make([]any, 0, 11)
 	args = append(args, in.Title, in.Slug, in.Content, in.ContentHash, in.Excerpt, in.InheritPermissions, in.UpdatedBy, now)
 	if in.Metadata != nil {
 		query += `,
@@ -313,6 +321,10 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 	query += `
 		WHERE id = ?`
 	args = append(args, in.ID)
+	if in.ExpectedContentHash != nil {
+		query += ` AND content_hash = ?`
+		args = append(args, *in.ExpectedContentHash)
+	}
 	res, err := tx.Exec(query, args...)
 	if err != nil {
 		if isUniqueConstraintError(err) {
@@ -321,10 +333,18 @@ func (r *PageRepository) UpdateTx(tx database.Tx, in UpdateInput) error {
 		return fmt.Errorf("update page %d: %w", in.ID, err)
 	}
 	rows, _ := res.RowsAffected()
-	if rows == 0 {
+	if rows > 0 {
+		return nil
+	}
+	if in.ExpectedContentHash == nil {
 		return ErrNotFound
 	}
-	return nil
+	// The guarded UPDATE matched nothing: the page is gone, or its hash moved on.
+	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM pages WHERE id = ?`, in.ID).Scan(&exists); err != nil {
+		return notFoundOrWrap(err, fmt.Sprintf("check page %d", in.ID))
+	}
+	return ErrConcurrentUpdate
 }
 
 // MoveTx reparents a page and overwrites its path/depth. Cycle detection is

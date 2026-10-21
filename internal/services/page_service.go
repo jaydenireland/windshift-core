@@ -238,6 +238,9 @@ func (s *PageService) Update(actorID int, in UpdatePageInput) (*models.Page, err
 			}
 			return nil, err
 		}
+		// Fail fast on an already-stale hash. UpdateTx re-checks it inside the
+		// UPDATE, which is what stops two saves holding the same hash from both
+		// landing on PostgreSQL, where this read takes no row lock.
 		if in.ExpectedContentHash != nil && existing.ContentHash != *in.ExpectedContentHash {
 			return nil, ErrPageContentConflict
 		}
@@ -248,19 +251,23 @@ func (s *PageService) Update(actorID int, in UpdatePageInput) (*models.Page, err
 		}
 
 		err = s.pages.UpdateTx(tx, repository.UpdateInput{
-			ID:                 in.ID,
-			Title:              title,
-			Slug:               newSlug,
-			Content:            content,
-			ContentHash:        hash,
-			Excerpt:            excerpt,
-			InheritPermissions: existing.InheritPermissions,
-			Metadata:           metadata,
-			UpdatedBy:          actorID,
+			ID:                  in.ID,
+			Title:               title,
+			Slug:                newSlug,
+			Content:             content,
+			ContentHash:         hash,
+			Excerpt:             excerpt,
+			InheritPermissions:  existing.InheritPermissions,
+			Metadata:            metadata,
+			UpdatedBy:           actorID,
+			ExpectedContentHash: in.ExpectedContentHash,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrDuplicateEntry) {
 				return nil, ErrPageUniqueConflict
+			}
+			if errors.Is(err, repository.ErrConcurrentUpdate) {
+				return nil, ErrPageContentConflict
 			}
 			if errors.Is(err, repository.ErrNotFound) {
 				return nil, ErrPageNotFound
