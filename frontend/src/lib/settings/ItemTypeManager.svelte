@@ -279,6 +279,7 @@
       {
         id: 'delete',
         type: 'regular',
+        testid: 'item-type-delete',
         icon: Trash2,
         title: t('common.delete'),
         color: 'var(--ds-text-danger)',
@@ -310,7 +311,7 @@
 </PageHeader>
 
   {#if error}
-    <div class="error">
+    <div class="error" data-testid="item-type-error">
       {error}
     </div>
   {/if}

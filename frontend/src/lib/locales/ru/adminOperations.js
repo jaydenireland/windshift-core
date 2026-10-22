@@ -299,6 +299,20 @@ export default {
     addingGroup: 'Добавление группы…',
   },
   boardControls: {
+    milestoneSwimlanes: 'Дорожки этапов',
+    milestoneSwimlanesDescription: 'Группировать карточки по этапам',
+    configureMilestones: 'Настроить дорожки этапов',
+    configureMilestonesDescription: 'Выберите глобальные и завершённые этапы',
+    showCompletedMilestones: 'Показывать завершённые этапы',
+    showCompletedMilestonesHint:
+      'Карточки на скрытых завершённых этапах остаются видимыми в общей дорожке.',
+    globalMilestones: 'Глобальные этапы',
+    globalMilestonesSelected: 'Выбрано: {count}',
+    globalMilestonesHint:
+      'Глобальные этапы общие для всех рабочих пространств; пустую дорожку сохраняют только выбранные. Этапы с карточками отображаются всегда.',
+    noGlobalMilestones: 'Нет доступных глобальных этапов.',
+    completedMilestones: 'Завершённые этапы',
+    milestoneSwimlanesSaved: 'Настройки дорожек этапов сохранены',
     groupBy: 'Группировать',
     groupByValue: 'Группировка: {name}',
     sortBy: 'Сортировать',

@@ -428,6 +428,16 @@ export default {
   },
 
   collections: {
+    itemTypeLaneHint: '{type}泳道',
+    itemTypeLaneUnassignedHint: '没有{type}父项的条目',
+    itemTypeLaneUnassignedVisibleHint: '没有可见{type}父项的条目',
+    milestoneLaneHint: '里程碑泳道',
+    milestoneLaneUnassignedHint: '没有里程碑的条目',
+    milestoneLaneConfirmTitle: '移除里程碑分配？',
+    milestoneLaneConfirmAssign: '移动此卡片将仅保留{milestone}并移除{milestones}。',
+    milestoneLaneConfirmUnassign: '将此卡片移至“未分配”将移除{milestones}。',
+    milestoneLaneConfirmAction: '移动卡片',
+    milestoneWorkspaceMismatch: "该里程碑属于另一个工作区。请先在该里程碑的工作区中创建或移动卡片。",
     title: '集合',
     subtitle: '已保存的查询和筛选器',
     allGlobal: '全部全局',

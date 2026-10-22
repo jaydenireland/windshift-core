@@ -297,6 +297,20 @@ export default {
     addingGroup: 'Ajout du groupe…',
   },
   boardControls: {
+    milestoneSwimlanes: 'Couloirs de jalons',
+    milestoneSwimlanesDescription: 'Grouper les cartes par jalon',
+    configureMilestones: 'Configurer les couloirs de jalons',
+    configureMilestonesDescription: 'Choisir les jalons globaux et terminés',
+    showCompletedMilestones: 'Afficher les jalons terminés',
+    showCompletedMilestonesHint:
+      'Les cartes des jalons terminés masqués restent visibles dans un couloir commun.',
+    globalMilestones: 'Jalons globaux',
+    globalMilestonesSelected: '{count} sélectionné(s)',
+    globalMilestonesHint:
+      'Les jalons globaux sont partagés entre les espaces de travail ; seuls ceux sélectionnés conservent un couloir vide. Les jalons avec cartes apparaissent toujours.',
+    noGlobalMilestones: 'Aucun jalon global disponible.',
+    completedMilestones: 'Jalons terminés',
+    milestoneSwimlanesSaved: 'Paramètres des couloirs de jalons enregistrés',
     groupBy: 'Regrouper par',
     groupByValue: 'Regrouper par : {name}',
     sortBy: 'Trier par',

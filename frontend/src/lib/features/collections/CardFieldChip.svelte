@@ -205,6 +205,11 @@
       <Chip appearance="metadata" title={customFieldDef.name}>
         {customFieldUserNames[0]}{#if customFieldUserNames.length > 1} +{customFieldUserNames.length - 1}{/if}
       </Chip>
+    {:else if customFieldDef.field_type === 'multi_milestone'}
+      {@const milestoneCount = Array.isArray(customFieldValue) ? customFieldValue.length : 0}
+      <Chip appearance="metadata" title={customFieldDef.name}>
+        {milestoneCount} {t('pickers.milestones')}
+      </Chip>
     {:else if customFieldDef.field_type === 'url' && String(customFieldValue).trim()}
       <Chip appearance="metadata" title={customFieldValue}>
         {String(customFieldValue).length > 30 ? String(customFieldValue).slice(0, 30) + '…' : customFieldValue}

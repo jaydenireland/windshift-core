@@ -755,6 +755,9 @@ export default {
       copyLink: 'Copy public link',
       copied: 'Copied!',
       openBoard: 'Open board',
+      milestoneSwimlanes: 'Group cards by milestone',
+      milestoneSwimlanesHint:
+        'Public viewers see milestone swimlanes. They cannot toggle grouping or drag cards.',
       scopeNote:
         'The collection query must include a workspaceKey scope. You must be a workspace administrator in every referenced workspace.',
       save: 'Save sharing',
@@ -884,6 +887,17 @@ export default {
     boardItemsTruncated: 'Some board items are hidden. Select “Load more” to display them all.',
     combinedBoardMoveUnsupported: 'Change the swimlane and status separately.',
     swimlaneMoveFailed: 'Could not move the item to that swimlane.',
+    itemTypeLaneHint: '{type} swimlane',
+    itemTypeLaneUnassignedHint: 'Items without a {type} parent',
+    itemTypeLaneUnassignedVisibleHint: 'Items without a visible {type} parent',
+    milestoneLaneHint: 'Milestone swimlane',
+    milestoneLaneUnassignedHint: 'Items without a milestone',
+    milestoneLaneHiddenCompletedHint: 'Cards on completed milestones',
+    milestoneLaneConfirmTitle: 'Remove milestone assignments?',
+    milestoneLaneConfirmAssign: 'Moving this card keeps only {milestone} and removes {milestones}.',
+    milestoneLaneConfirmUnassign: 'Moving this card to Unassigned removes {milestones}.',
+    milestoneLaneConfirmAction: 'Move card',
+    milestoneWorkspaceMismatch: "That milestone belongs to another workspace. Create or move the card in the milestone's workspace first.",
     manual_sort_unavailable_title: 'Manual sorting unavailable',
     manual_sort_unavailable: 'Switch to Rank mode to arrange cards manually.',
     // Board card dependency hover summary

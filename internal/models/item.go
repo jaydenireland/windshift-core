@@ -460,12 +460,14 @@ type Collection struct {
 	FilterState *string `json:"filter_state"`
 	IsPublic    bool    `json:"is_public"`
 	IsPrivate   bool    `json:"is_private"`
-	WorkspaceID *int    `json:"workspace_id"`
-	CategoryID  *int    `json:"category_id,omitempty"`
-	CreatedBy   *int    `json:"created_by"`
-	PublicSlug  *string `json:"public_slug,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	// PublicMilestoneSwimlanes groups the anonymous public board by milestone.
+	PublicMilestoneSwimlanes bool    `json:"public_milestone_swimlanes"`
+	WorkspaceID              *int    `json:"workspace_id"`
+	CategoryID               *int    `json:"category_id,omitempty"`
+	CreatedBy                *int    `json:"created_by"`
+	PublicSlug               *string `json:"public_slug,omitempty"`
+	CreatedAt                string  `json:"created_at"`
+	UpdatedAt                string  `json:"updated_at"`
 	// Joined fields for API responses
 	CreatorName   string `json:"creator_name,omitempty"`
 	CreatorEmail  string `json:"creator_email,omitempty"`

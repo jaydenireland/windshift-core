@@ -12,7 +12,8 @@
     hiddenItemCount = 0,
     isOverWip = false,
     statusColumnKey = '',
-    swimlaneParentId = '',
+    swimlaneDimension = '',
+    swimlaneKey = '',
     statusId = column?.status_ids?.[0] ?? '',
     quickAddOpen = false,
     columnStyle = 'background-color: var(--ds-surface-raised); border-color: var(--ds-border);',
@@ -33,7 +34,8 @@
   id={`board-column-status-${statusId}`}
   data-status-column
   data-status-column-key={statusColumnKey}
-  data-swimlane-parent-id={swimlaneParentId}
+  data-swimlane-dimension={swimlaneDimension}
+  data-swimlane-key={swimlaneKey}
   data-status-id={statusId}
 >
   <span class="sr-only" data-testid={`board-column-status-${statusId}`} aria-hidden="true"></span>

@@ -97,7 +97,7 @@ type listItemsArgs struct {
 	ParentID    *int   `json:"parent_id,omitempty" jsonschema:"Filter by parent item ID (0 for root items only)"`
 	Limit       int    `json:"limit,omitempty" jsonschema:"Max items to return (default 20, max 200)"`
 	Offset      int    `json:"offset,omitempty" jsonschema:"Offset for pagination"`
-	Filter      string `json:"filter,omitempty" jsonschema:"CQL filter expression. Supported fields: status, priority, assignee, creator, due_date, label, milestone, iteration, project, itemtype, cf_<name>. Operators: =, !=, <, <=, >, >=, ~ (contains), IN, NOT IN. Logical: AND, OR, NOT. Functions: currentUser(), now(), startOfDay(), endOfDay()."`
+	Filter      string `json:"filter,omitempty" jsonschema:"CQL filter expression. Supported fields: status, priority, assignee, creator, due_date, label, milestone, iteration, project, itemtype, cf_<name> (or the bare custom field name). Operators: =, !=, <, <=, >, >=, ~ (contains), IN, NOT IN. Logical: AND, OR, NOT. Functions: currentUser(), now(), startOfDay(), endOfDay()."`
 }
 
 type listItemsOut struct {

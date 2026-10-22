@@ -523,6 +523,17 @@ export default {
   },
 
   collections: {
+    itemTypeLaneHint: 'Couloir {type}',
+    itemTypeLaneUnassignedHint: 'Éléments sans parent {type}',
+    itemTypeLaneUnassignedVisibleHint: 'Éléments sans parent {type} visible',
+    milestoneLaneHint: 'Couloir de jalon',
+    milestoneLaneUnassignedHint: 'Éléments sans jalon',
+    milestoneLaneHiddenCompletedHint: 'Cartes sur des jalons terminés',
+    milestoneLaneConfirmTitle: 'Supprimer des affectations de jalon ?',
+    milestoneLaneConfirmAssign: 'Déplacer cette carte ne conserve que {milestone} et supprime {milestones}.',
+    milestoneLaneConfirmUnassign: 'Déplacer cette carte vers Non affecté supprime {milestones}.',
+    milestoneLaneConfirmAction: 'Déplacer la carte',
+    milestoneWorkspaceMismatch: "Ce jalon appartient à un autre espace de travail. Créez ou déplacez d’abord la carte dans l’espace de travail du jalon.",
     // Page titles and headers
     title: 'Collections',
     subtitle: 'Requêtes et filtres enregistrés',
@@ -625,6 +636,9 @@ export default {
       copyLink: 'Copier le lien public',
       copied: 'Copié !',
       openBoard: 'Ouvrir le tableau',
+      milestoneSwimlanes: 'Grouper les cartes par jalon',
+      milestoneSwimlanesHint:
+        'Les visiteurs voient des couloirs de jalons. Ils ne peuvent ni changer le regroupement ni déplacer les cartes.',
       scopeNote:
         'La requête de la collection doit inclure une portée workspaceKey. Vous devez être administrateur de chaque espace de travail référencé.',
       save: 'Enregistrer le partage',

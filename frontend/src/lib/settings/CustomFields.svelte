@@ -103,6 +103,7 @@
     { value: 'multi_user', label: 'Multi User', icon: User, iconColor: '#4D9DC5' },
     { value: 'iteration', label: 'Iteration', icon: Repeat, iconColor: '#D95B5B' },
     { value: 'milestone', label: 'Milestone', icon: Flag, iconColor: '#C9A84C' },
+    { value: 'multi_milestone', label: 'Multi Milestone', icon: Flag, iconColor: '#C9A84C' },
     { value: 'asset', label: 'Asset', icon: Box, iconColor: '#7B8A9E' },
     { value: 'portalcustomer', label: 'Portal Customer', icon: Globe, iconColor: '#E07BAF' },
     { value: 'customerorganisation', label: 'Customer Organisation', icon: Building2, iconColor: '#8B7EC8' },
@@ -353,7 +354,7 @@
       if (formData.field_config.max_length) {
         config.max_length = parseInt(formData.field_config.max_length);
       }
-    } else if (formData.field_type === 'milestone') {
+    } else if (formData.field_type === 'milestone' || formData.field_type === 'multi_milestone') {
       // Milestone fields don't need special configuration
       // They reference existing milestones from the system
     } else if (formData.field_type === 'date') {
@@ -495,7 +496,7 @@
 
   const needsOptions = $derived(formData.field_type === 'select' || formData.field_type === 'multiselect');
   const needsMaxLength = $derived(formData.field_type === 'text' || formData.field_type === 'textarea');
-  const isMilestoneField = $derived(formData.field_type === 'milestone');
+  const isMilestoneField = $derived(formData.field_type === 'milestone' || formData.field_type === 'multi_milestone');
   const isDateField = $derived(formData.field_type === 'date');
   const isAssetField = $derived(formData.field_type === 'asset');
   const isPortalCustomerField = $derived(formData.field_type === 'portalcustomer');

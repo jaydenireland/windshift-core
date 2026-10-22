@@ -16,6 +16,7 @@
     isOpen = false,
     isPublic = false,
     publicSlug = null,
+    publicMilestoneSwimlanes = false,
     slugSaved = false,
     saving = false,
     onclose = null,
@@ -24,13 +25,16 @@
 
   let draftIsPublic = $state(false);
   let draftSlug = $state('');
+  let draftPublicMilestoneSwimlanes = $state(false);
   let saveError = $state('');
   let wasOpen = false;
 
   const normalizedSlug = $derived(draftSlug.trim());
   const slugIsValid = $derived(/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(normalizedSlug));
   const hasChanges = $derived(
-    draftIsPublic !== isPublic || normalizedSlug !== (publicSlug || '')
+    draftIsPublic !== isPublic ||
+      normalizedSlug !== (publicSlug || '') ||
+      draftPublicMilestoneSwimlanes !== publicMilestoneSwimlanes
   );
   const persistedUrlAvailable = $derived(
     isPublic && slugSaved && normalizedSlug === (publicSlug || '')
@@ -43,6 +47,7 @@
     if (isOpen && !wasOpen) {
       draftIsPublic = isPublic;
       draftSlug = publicSlug || '';
+      draftPublicMilestoneSwimlanes = publicMilestoneSwimlanes;
       saveError = '';
     }
     wasOpen = isOpen;
@@ -58,6 +63,7 @@
     const result = await onsave?.({
       isPublic: draftIsPublic,
       publicSlug: normalizedSlug || null,
+      publicMilestoneSwimlanes: draftIsPublic ? draftPublicMilestoneSwimlanes : false,
     });
     if (result?.ok === false) {
       saveError = result.error || t('collections.publicBoardSharing.saveError');
@@ -146,6 +152,20 @@
           </Button>
         </div>
       {/if}
+
+      <div
+        class="rounded-lg border p-4"
+        style="border-color: var(--ds-border); background-color: var(--ds-surface);"
+      >
+        <Checkbox
+          id="public-board-milestone-swimlanes-input"
+          checked={draftPublicMilestoneSwimlanes}
+          onchange={(checked) => (draftPublicMilestoneSwimlanes = checked)}
+          label={t('collections.publicBoardSharing.milestoneSwimlanes')}
+          hint={t('collections.publicBoardSharing.milestoneSwimlanesHint')}
+          dataTestid="public-board-milestone-swimlanes"
+        />
+      </div>
     {/if}
 
     <div

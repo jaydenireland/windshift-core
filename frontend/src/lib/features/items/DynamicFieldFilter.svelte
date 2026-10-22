@@ -54,7 +54,7 @@
 
   function fieldCanHaveValueHelp(field) {
     return Boolean(field?.completion?.value_help || field?.completion?.values?.length) ||
-      ['enum', 'select', 'multiselect', 'user', 'reference', 'milestone', 'iteration'].includes(field?.type);
+      ['enum', 'select', 'multiselect', 'multi_milestone', 'user', 'reference', 'milestone', 'iteration'].includes(field?.type);
   }
 
   $effect(() => {

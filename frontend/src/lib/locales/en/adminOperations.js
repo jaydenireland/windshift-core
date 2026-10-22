@@ -313,6 +313,20 @@ export default {
     groupOutsideColumn: 'Group items only outside {column}',
     hiddenCount: '{count} hidden',
     useAsSwimlanes: 'Use these items as swimlanes',
+    milestoneSwimlanes: 'Milestone swimlanes',
+    milestoneSwimlanesDescription: 'Group cards by milestone',
+    configureMilestones: 'Configure milestone swimlanes',
+    configureMilestonesDescription: 'Choose global milestones and completed milestones',
+    showCompletedMilestones: 'Show completed milestones',
+    showCompletedMilestonesHint:
+      'Cards on hidden completed milestones stay visible in a single completed-milestones lane.',
+    globalMilestones: 'Global milestones',
+    globalMilestonesSelected: '{count} selected',
+    globalMilestonesHint:
+      'Global milestones are shared across workspaces, so only the ones you select keep an empty swimlane. Milestones with cards always appear.',
+    noGlobalMilestones: 'No global milestones are available.',
+    completedMilestones: 'Completed milestones',
+    milestoneSwimlanesSaved: 'Milestone swimlane settings saved',
   },
   systemImport: {
     title: 'System Import',

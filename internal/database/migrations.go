@@ -2902,6 +2902,14 @@ var Catalog = []Migration{
 			CREATE INDEX IF NOT EXISTS idx_comment_reactions_user_id ON comment_reactions(user_id);
 		`,
 	},
+	{
+		Version:       "20261106_collections_public_milestone_swimlanes",
+		Name:          "Preconfigure milestone swimlanes on public collection boards",
+		CheckSQLite:   sqliteColumnCheck("collections", "public_milestone_swimlanes"),
+		CheckPostgres: pgColumnCheck("collections", "public_milestone_swimlanes"),
+		SQLite:        "ALTER TABLE collections ADD COLUMN public_milestone_swimlanes BOOLEAN NOT NULL DEFAULT false",
+		Postgres:      "ALTER TABLE collections ADD COLUMN IF NOT EXISTS public_milestone_swimlanes BOOLEAN NOT NULL DEFAULT false",
+	},
 }
 
 // applyAssetReportsWorkspacePinned backfills form-mode asset reports that have

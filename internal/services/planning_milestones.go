@@ -1056,10 +1056,66 @@ func (s *PlanningService) DeleteMilestone(id int, auditActors ...AuditActor) err
 	if err != nil {
 		return fmt.Errorf("failed to delete milestone: %w", err)
 	}
+	s.enqueueMilestoneReferenceCleanup(id)
 	if actor := optionalAuditActor(auditActors); actor != nil {
 		emitServiceAudit(s.db, *actor, logger.ActionMilestoneDelete, logger.ResourceMilestone, &id, resourceName, nil)
 	}
 	return nil
+}
+
+// enqueueMilestoneReferenceCleanup strips a deleted milestone from single- and
+// multi-value milestone custom fields. Cleanup runs asynchronously so a large
+// item population does not block deletion.
+func (s *PlanningService) enqueueMilestoneReferenceCleanup(milestoneID int) {
+	rows, err := s.db.Query(`SELECT id, field_type FROM custom_field_definitions WHERE field_type IN ('milestone', 'multi_milestone')`)
+	if err != nil {
+		slog.Warn("failed to load milestone custom fields for cleanup", slog.Int("milestone_id", milestoneID), slog.Any("error", err))
+		return
+	}
+	type fieldRef struct {
+		id        int
+		fieldType string
+	}
+	var fields []fieldRef
+	for rows.Next() {
+		var field fieldRef
+		if err := rows.Scan(&field.id, &field.fieldType); err != nil {
+			slog.Warn("failed to read milestone custom field for cleanup", slog.Int("milestone_id", milestoneID), slog.Any("error", err))
+			break
+		}
+		fields = append(fields, field)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Warn("failed to list milestone custom fields for cleanup", slog.Int("milestone_id", milestoneID), slog.Any("error", err))
+	}
+	_ = rows.Close()
+
+	for _, field := range fields {
+		payload, err := json.Marshal(milestoneCleanupPayload{
+			FieldID:    field.id,
+			FieldType:  field.fieldType,
+			RemovedIDs: []int{milestoneID},
+		})
+		if err != nil {
+			slog.Warn("failed to encode milestone reference cleanup", slog.Int("milestone_id", milestoneID), slog.Int("field_id", field.id), slog.Any("error", err))
+			continue
+		}
+		// The payload matches scheduler.optionRemovalPayload; importing the
+		// scheduler here would create an import cycle through email/services.
+		if _, err := s.db.ExecWrite(
+			`INSERT INTO pending_custom_field_cleanups (field_id, job_type, payload, status, created_at)
+			 VALUES (?, 'option_removal', ?, 'pending', ?)`,
+			field.id, string(payload), time.Now(),
+		); err != nil {
+			slog.Warn("failed to enqueue milestone reference cleanup", slog.Int("milestone_id", milestoneID), slog.Int("field_id", field.id), slog.Any("error", err))
+		}
+	}
+}
+
+type milestoneCleanupPayload struct {
+	FieldID    int    `json:"field_id"`
+	FieldType  string `json:"field_type"`
+	RemovedIDs []int  `json:"removed_ids"`
 }
 
 // MilestoneTestStats aggregates test-plan activity for a milestone.

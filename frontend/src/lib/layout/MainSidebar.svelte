@@ -3,6 +3,7 @@
   import { permissionStore } from '../stores/permissions.svelte.js';
   import { uiStore } from '../stores/ui.svelte.js';
   import { workspacesStore } from '../stores/workspaces.svelte.js';
+  import { homepageStore } from '../stores/homepageStore.svelte.js';
   import { t } from '../stores/i18n.svelte.js';
   import { themeStore } from '../stores/theme.svelte.js';
   import { aiStore } from '../stores/aiStore.svelte.js';
@@ -39,6 +40,7 @@
 
   let workspaceSearchQuery = $state('');
   let searchedWorkspaces = $state(null);
+  let recentWorkspaceIds = $state([]);
   let workspaceSearchGeneration = 0;
   let workspaceSearchTimer = null;
 
@@ -55,8 +57,27 @@
     directoryWorkspaces,
     workspaceSearchQuery,
     onWorkspaceSearchInput,
-    t
+    t,
+    recentWorkspaceIds
   ));
+
+  async function loadRecentWorkspaceOrder() {
+    try {
+      const snapshot = await homepageStore.getSnapshot();
+      const visits = Array.isArray(snapshot?.recent_workspaces) ? snapshot.recent_workspaces : [];
+      recentWorkspaceIds = visits
+        .filter((visit) => visit?.workspace_id)
+        .sort((left, right) => visitedAt(right) - visitedAt(left))
+        .map((visit) => visit.workspace_id);
+    } catch (error) {
+      console.error('Failed to load recent workspaces:', error);
+    }
+  }
+
+  function visitedAt(visit) {
+    const timestamp = Date.parse(visit?.last_visited ?? '');
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  }
 
   function onWorkspaceSearchInput(value) {
     workspaceSearchQuery = value;
@@ -166,6 +187,7 @@
           iconOnly={!$uiStore.navExpanded}
           triggerAlignment={$uiStore.navExpanded ? 'start' : 'center'}
           isOpen={activeSurface === 'workspaces'}
+          onOpen={loadRecentWorkspaceOrder}
           onOpenChange={(open) => setPopoverSurface('workspaces', open)}
         />
       </div>

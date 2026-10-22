@@ -405,11 +405,12 @@
             data-menu-item
             data-testid={itemData.testid || undefined}
             data-id={itemData.id ?? undefined}
-            role="menuitem"
+            role={itemData.selected !== undefined ? 'menuitemradio' : 'menuitem'}
+            aria-checked={itemData.selected !== undefined ? (itemData.selected ? 'true' : 'false') : undefined}
             aria-disabled={itemData.disabled ? 'true' : undefined}
             tabindex={itemData.disabled ? -1 : 0}
             onclick={(e) => handleItemClick(itemData, e)}
-            class="menu-item flex items-center w-full px-4 py-3 text-sm transition-all duration-200 cursor-pointer {itemData.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''} {itemData.class || ''}"
+            class="menu-item flex items-center w-full px-4 py-3 text-sm transition-all duration-200 cursor-pointer {itemData.selected ? 'menu-item-selected' : ''} {itemData.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''} {itemData.class || ''}"
             style="color: {itemData.color || 'var(--ds-text)'}; {itemData.style || ''}"
           >
             {#if itemData.type === 'checkbox'}
@@ -469,6 +470,16 @@
 <style>
   .menu-item:hover {
     background-color: var(--ds-surface-raised-hovered);
+  }
+
+  /* A selected radio row keeps a subtle tint instead of the neutral hover so
+     the choice stays readable without a separate "selected" badge. */
+  .menu-item-selected {
+    background-color: var(--ds-background-selected);
+  }
+
+  .menu-item-selected:hover {
+    background-color: var(--ds-background-selected);
   }
 
   /* Radio-checked items keep their selected background instead of the hover. */

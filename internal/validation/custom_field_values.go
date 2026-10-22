@@ -65,6 +65,120 @@ func ValidateAndNormalizeCustomFieldValues(db database.Database, cfv map[string]
 				return err
 			}
 			cfv[fieldKey] = normalized
+		case "milestone":
+			normalized, err := normalizeMilestoneValue(db, fieldKey, raw, false)
+			if err != nil {
+				return err
+			}
+			cfv[fieldKey] = normalized
+		case "multi_milestone":
+			normalized, err := normalizeMilestoneValue(db, fieldKey, raw, true)
+			if err != nil {
+				return err
+			}
+			cfv[fieldKey] = normalized
+		}
+	}
+	return nil
+}
+
+// normalizeMilestoneValue validates milestone references and keeps first-seen
+// order. Multi-value fields store an array of ids; single-value fields store
+// one id.
+func normalizeMilestoneValue(db database.Database, fieldKey string, raw any, multi bool) (any, error) {
+	if raw == nil {
+		if multi {
+			return []int{}, nil
+		}
+		return nil, nil
+	}
+
+	if multi {
+		if s, ok := raw.(string); ok && strings.TrimSpace(s) == "" {
+			return []int{}, nil
+		}
+		values, err := coerceToSlice(raw)
+		if err != nil {
+			return nil, &ValidationError{
+				Field:   "custom_field_values." + fieldKey,
+				Message: fmt.Sprintf("milestone value must be an array, got %T", raw),
+			}
+		}
+		seen := make(map[int]bool, len(values))
+		ids := make([]int, 0, len(values))
+		for _, value := range values {
+			if s, ok := value.(string); ok && strings.TrimSpace(s) == "" {
+				continue
+			}
+			id, ok := coerceOptionID(value)
+			if !ok {
+				return nil, &ValidationError{
+					Field:   "custom_field_values." + fieldKey,
+					Message: fmt.Sprintf("milestone id must be a number, got %T", value),
+				}
+			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			ids = append(ids, id)
+		}
+		if len(ids) == 0 {
+			return []int{}, nil
+		}
+		if err := ensureMilestonesExist(db, fieldKey, ids); err != nil {
+			return nil, err
+		}
+		return ids, nil
+	}
+
+	if s, ok := raw.(string); ok && strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	id, ok := coerceOptionID(raw)
+	if !ok {
+		return nil, &ValidationError{
+			Field:   "custom_field_values." + fieldKey,
+			Message: fmt.Sprintf("milestone id must be a number, got %T", raw),
+		}
+	}
+	if err := ensureMilestonesExist(db, fieldKey, []int{id}); err != nil {
+		return nil, err
+	}
+	return id, nil
+}
+
+func ensureMilestonesExist(db database.Database, fieldKey string, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := db.Query("SELECT id FROM milestones WHERE id IN ("+placeholders+")", args...)
+	if err != nil {
+		return fmt.Errorf("load milestones for validation: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	found := make(map[int]bool, len(ids))
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan milestone id: %w", err)
+		}
+		found[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("load milestones for validation: %w", err)
+	}
+	for _, id := range ids {
+		if !found[id] {
+			return &ValidationError{
+				Field:   "custom_field_values." + fieldKey,
+				Message: fmt.Sprintf("milestone %d not found", id),
+			}
 		}
 	}
 	return nil

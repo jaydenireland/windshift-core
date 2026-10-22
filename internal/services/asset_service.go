@@ -462,7 +462,7 @@ func coerceAssetFieldValue(f models.AssetTypeField, v any) any {
 			}
 		}
 		return v
-	case "multiselect":
+	case "multiselect", "multi_milestone":
 		if arr, ok := toInterfaceSlice(v); ok {
 			return arr
 		}

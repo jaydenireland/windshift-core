@@ -21,7 +21,8 @@ export function isCreateRenderableCustomFieldType(fieldType) {
 // item; keeping the value undefined breaks bound custom-field renderers.
 export function defaultCustomFieldValue(fieldType) {
   if (isBooleanCustomFieldType(fieldType)) return false;
-  if (fieldType === 'multiselect' || fieldType === 'multi_user') return [];
+  if (fieldType === 'multiselect' || fieldType === 'multi_user' || fieldType === 'multi_milestone')
+    return [];
   return '';
 }
 

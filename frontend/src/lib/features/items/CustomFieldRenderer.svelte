@@ -165,6 +165,8 @@
           return milestone ? milestone.name : v;
         }
         return v;
+      case 'multi_milestone':
+        return normalizedMilestoneIDs().map((id) => milestoneName(id) ?? id).join(', ');
       case 'asset':
         if (Array.isArray(v)) {
           return v.map(assetDisplayName).join(', ');
@@ -209,7 +211,7 @@
 
 	function hasDisplayValue() {
 	  if (value === null || value === undefined || value === '') return false;
-	  return !(field.field_type === 'multiselect' && Array.isArray(value) && value.length === 0);
+	  return !((field.field_type === 'multiselect' || field.field_type === 'multi_milestone') && Array.isArray(value) && value.length === 0);
 	}
 
   // Handle keydown for text/number inputs
@@ -317,6 +319,21 @@
     return milestone || null;
   })());
 
+  function normalizedMilestoneIDs() {
+    const raw = /** @type {any} */ (value);
+    if (!raw) return [];
+    const entries = Array.isArray(raw) ? raw : [raw];
+    return entries.map((entry) => {
+      if (entry && typeof entry === 'object') return parseInt(entry.id, 10);
+      return parseInt(entry, 10);
+    }).filter((id) => Number.isFinite(id) && id > 0);
+  }
+
+  function milestoneName(id) {
+    const milestone = milestones?.find((m) => m.id === parseInt(id, 10));
+    return milestone ? milestone.name : null;
+  }
+
   // --- Self-editing plumbing ------------------------------------------------
   // In self-editing mode the component starts in display form and swaps to
   // the editor on click, commit-on-change for single-value types and commit
@@ -364,7 +381,7 @@
     onChange(newValue);
     // Multi-value editors stay open so several entries can be picked in a
     // row; everything else returns to display right after the commit.
-    const multiValue = ['multi_user', 'multiselect', 'combobox'].includes(field.field_type)
+    const multiValue = ['multi_user', 'multiselect', 'multi_milestone', 'combobox'].includes(field.field_type)
       || (field.field_type === 'asset' && isMultiAssetField);
     if (!multiValue) exitEditing();
   }
@@ -446,6 +463,8 @@
       }
       case 'milestone':
         return milestoneData?.name || '';
+      case 'multi_milestone':
+        return milestoneName(missingValue) || '';
       case 'iteration': {
         const iteration = iterations?.find((i) => i.id === parseInt(missingValue));
         return iteration ? iteration.name : '';
@@ -498,6 +517,11 @@
         {:else}
           <span style="color: var(--ds-text-subtle);">{t('items.notSet')}</span>
         {/if}
+      </div>
+    {:else if field.field_type === 'multi_milestone'}
+      <div class="flex min-w-0 items-center gap-2 {displayAlignment === 'end' ? 'justify-end' : ''}">
+        <Target class="w-4 h-4 flex-shrink-0" style="color: var(--ds-text-subtle);" />
+        <span class={truncateDisplay ? 'min-w-0 truncate' : ''} style="color: var(--ds-text);">{renderDisplayValue()}</span>
       </div>
     {:else if field.field_type === 'iteration'}
       <div class="flex items-center gap-2 {displayAlignment === 'end' ? 'justify-end' : ''}">
@@ -636,6 +660,26 @@
         {disabled}
         {resolveMissingLabel}
         onSelect={(item) => handleEditorChange(item?.id || null)}
+        onCancel={handleEditorCancel}
+      />
+    {:else if field.field_type === 'multi_milestone'}
+      <ItemPicker
+        value={normalizedMilestoneIDs()}
+        values={normalizedMilestoneIDs()}
+        items={milestones}
+        config={milestoneConfig}
+        placeholder={t('pickers.selectMilestones')}
+        showUnassigned={false}
+        multiSelect={true}
+        autoOpen={pickerAutoOpen}
+        class="w-full"
+        {disabled}
+        {resolveMissingLabel}
+        onSelect={(selected) => handleEditorChange(
+          Array.isArray(selected)
+            ? selected.map((entry) => (entry && typeof entry === 'object' ? entry.id : entry)).filter((entry) => entry != null)
+            : []
+        )}
         onCancel={handleEditorCancel}
       />
     {:else if field.field_type === 'user'}

@@ -204,9 +204,10 @@ var systemFieldSortColumns = map[string]string{
 
 // unsortableCustomFieldTypes lists custom field types that cannot be meaningfully sorted.
 var unsortableCustomFieldTypes = map[string]bool{
-	"multiselect": true,
-	"multi_user":  true,
-	"linking":     true,
+	"multiselect":     true,
+	"multi_milestone": true,
+	"multi_user":      true,
+	"linking":         true,
 }
 
 // numericCustomFieldSortTypes store scalar numbers or entity/option IDs.

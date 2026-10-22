@@ -477,7 +477,7 @@ func customCompletionFieldDTO(id int, name, description, fieldType, rawOptions s
 		for i, option := range options.Items {
 			result.Values[i] = qlCompletionValueDTO{Value: option.ID, Label: option.Label}
 		}
-	case "milestone":
+	case "milestone", "multi_milestone":
 		result.ValueType = "number"
 		result.ValueHelp = completionValueHelp(cql.CompletionValuesMilestones, "number", "")
 	case "iteration":

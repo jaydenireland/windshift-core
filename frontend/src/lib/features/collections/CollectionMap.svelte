@@ -47,7 +47,7 @@
     laneDropUpdate,
     mapSwimlaneStorageKey,
     SWIMLANE_DIMENSIONS,
-  } from './mapSwimlanes.js';
+  } from './swimlanes.js';
 
   let { workspaceId, collectionId = null } = $props();
 

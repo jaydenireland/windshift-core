@@ -296,6 +296,7 @@
       workspace_id: currentCollection.workspace_id ?? null,
       category_id: currentCollection.category_id ?? null,
       is_private: currentCollection.is_private ?? false,
+      public_milestone_swimlanes: currentCollection.public_milestone_swimlanes ?? false,
       ...overrides,
     };
   }
@@ -317,13 +318,14 @@
     }
   }
 
-  async function handlePublicSharingSave({ isPublic, publicSlug }) {
+  async function handlePublicSharingSave({ isPublic, publicSlug, publicMilestoneSwimlanes }) {
     if (!currentCollection) return { ok: false, error: 'Collection not found.' };
     savingPublicSharing = true;
     try {
       const update = buildCollectionUpdate({
         is_public: isPublic,
         public_slug: publicSlug,
+        public_milestone_swimlanes: isPublic ? publicMilestoneSwimlanes === true : false,
       });
       await collections.update(currentCollection.id, update);
       currentCollection = {
@@ -332,6 +334,7 @@
         filter_state: update.filter_state,
         is_public: isPublic,
         public_slug: publicSlug,
+        public_milestone_swimlanes: update.public_milestone_swimlanes,
       };
       slugSaved = Boolean(isPublic && publicSlug);
       return { ok: true };
@@ -481,6 +484,7 @@
       showPublicBoard={canManagePublicBoard}
       isPublic={currentCollection?.is_public || false}
       publicSlug={currentCollection?.public_slug || null}
+      publicMilestoneSwimlanes={currentCollection?.public_milestone_swimlanes || false}
       {slugSaved}
       saving={savingPublicSharing}
       onpublicsave={handlePublicSharingSave}

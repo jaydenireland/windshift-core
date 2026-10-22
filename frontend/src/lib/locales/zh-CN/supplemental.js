@@ -726,6 +726,20 @@ export default {
     "agentAuthored": "由 AI 代理编写",
     "agentOwnedBy": "由 {owner} 拥有的 AI 代理"
   },
+  "boardControls": {
+    "milestoneSwimlanes": "按里程碑分组卡片",
+    "milestoneSwimlanesDescription": "按里程碑对卡片进行分组",
+    "configureMilestones": "配置里程碑泳道",
+    "configureMilestonesDescription": "选择全局里程碑和已完成里程碑",
+    "showCompletedMilestones": "显示已完成的里程碑",
+    "showCompletedMilestonesHint": "已隐藏的已完成里程碑上的卡片仍会显示在统一的已完成里程碑泳道中。",
+    "globalMilestones": "全局里程碑",
+    "globalMilestonesSelected": "已选择 {count} 个",
+    "globalMilestonesHint": "全局里程碑在所有工作区之间共享；只有选中的里程碑会保留空泳道。带有卡片的里程碑始终显示。",
+    "noGlobalMilestones": "没有可用的全局里程碑。",
+    "completedMilestones": "已完成的里程碑",
+    "milestoneSwimlanesSaved": "里程碑泳道设置已保存"
+  },
   "collections": {
     "selectType": "选择类型",
     "queryPlaceholder": "示例：workspace = \"My Project\" AND status = \"open\"",
@@ -749,11 +763,14 @@ export default {
       "copyLink": "复制公开链接",
       "copied": "已复制！",
       "openBoard": "打开看板",
+      "milestoneSwimlanes": "按里程碑分组卡片",
+      "milestoneSwimlanesHint": "公开访客将看到里程碑泳道，但无法切换分组或拖动卡片。",
       "scopeNote": "集合查询必须包含 workspaceKey 范围。您必须是所有引用工作区的管理员。",
       "save": "保存共享",
       "disable": "停用共享",
       "saveError": "无法保存公开共享设置。"
     },
+    "milestoneLaneHiddenCompletedHint": "已完成里程碑上的卡片",
     "transition_failed": "状态转换失败。董事会已经刷新。",
     "manual_sort_unavailable_title": "无法手动排序",
     "manual_sort_unavailable": "切换到排名模式以手动排列卡片。",

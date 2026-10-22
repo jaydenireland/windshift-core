@@ -178,6 +178,20 @@ export default withEnglishAdminOperations({
     deleted: 'Vorgefertigte Antwort gelöscht',
   },
   boardControls: {
+    milestoneSwimlanes: 'Meilenstein-Swimlanes',
+    milestoneSwimlanesDescription: 'Karten nach Meilenstein gruppieren',
+    configureMilestones: 'Meilenstein-Swimlanes konfigurieren',
+    configureMilestonesDescription: 'Globale und abgeschlossene Meilensteine auswählen',
+    showCompletedMilestones: 'Abgeschlossene Meilensteine anzeigen',
+    showCompletedMilestonesHint:
+      'Karten auf ausgeblendeten abgeschlossenen Meilensteinen bleiben in einer gemeinsamen Spur sichtbar.',
+    globalMilestones: 'Globale Meilensteine',
+    globalMilestonesSelected: '{count} ausgewählt',
+    globalMilestonesHint:
+      'Globale Meilensteine werden über alle Arbeitsbereiche geteilt; nur ausgewählte behalten eine leere Swimlane. Meilensteine mit Karten erscheinen immer.',
+    noGlobalMilestones: 'Keine globalen Meilensteine verfügbar.',
+    completedMilestones: 'Abgeschlossene Meilensteine',
+    milestoneSwimlanesSaved: 'Meilenstein-Swimlane-Einstellungen gespeichert',
     groupBy: 'Gruppieren nach',
     groupByValue: 'Gruppieren nach: {name}',
     sortBy: 'Sortieren nach',

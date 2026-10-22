@@ -377,6 +377,16 @@
     if (fieldDef.field_type === 'date') {
       return formatCustomFieldDate(value);
     }
+    if (fieldDef.field_type === 'milestone' || fieldDef.field_type === 'multi_milestone') {
+      const entries = fieldDef.field_type === 'multi_milestone'
+        ? (Array.isArray(value) ? value : [])
+        : (value === null || value === undefined || value === '' ? [] : [value]);
+      return entries.map((entry) => {
+        const id = entry && typeof entry === 'object' ? entry.id : entry;
+        const milestone = milestones?.find((m) => m.id === parseInt(id, 10));
+        return milestone ? milestone.name : id;
+      }).join(', ');
+    }
     if (fieldDef.field_type === 'user' && typeof value === 'object') {
       return value.name || t('common.selected');
     }
@@ -1331,7 +1341,9 @@
                 {:else if isEditing}
                   {@render customFieldEditor(fieldDef, screenField, currentValue, fieldEditable, true)}
                 {:else}
-                  {@const hasValue = currentValue !== null && currentValue !== undefined && currentValue !== ''}
+                  {@const hasValue = Array.isArray(currentValue)
+                    ? currentValue.length > 0
+                    : currentValue !== null && currentValue !== undefined && currentValue !== ''}
                   {@const displayValue = hasValue ? formatCustomFieldValue(fieldDef, currentValue) : t('common.none')}
                   {@const valueHref = customFieldLinkHref(fieldDef.field_type, currentValue)}
                   <!-- Unified read-only row: label left, value right. The row owns

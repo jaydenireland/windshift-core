@@ -722,6 +722,8 @@ export default {
       "copyLink": "Öffentlichen Link kopieren",
       "copied": "Kopiert!",
       "openBoard": "Board öffnen",
+      "milestoneSwimlanes": "Karten nach Meilenstein gruppieren",
+      "milestoneSwimlanesHint": "Öffentliche Besucher sehen Meilenstein-Swimlanes. Sie können die Gruppierung nicht ändern und keine Karten ziehen.",
       "scopeNote": "Die Sammlungsabfrage muss einen workspaceKey-Bereich enthalten. Sie müssen in jedem referenzierten Arbeitsbereich Arbeitsbereichsadministrator sein.",
       "save": "Freigabe speichern",
       "disable": "Freigabe deaktivieren",

@@ -26,7 +26,8 @@
     dependencyLinks = [],
     moveMenuItems = [],
     closestEdge = null,
-    swimlaneParentId = '',
+    swimlaneDimension = '',
+    swimlaneKey = '',
     cardStyle = 'background-color: var(--ds-surface-raised); border-color: var(--ds-border);',
     textStyle = 'color: var(--ds-text);',
     showMoveMenu = true,
@@ -103,7 +104,8 @@
   data-testid={`board-item-${item.id}`}
   data-item-card
   data-item-id={item.id}
-  data-swimlane-parent-id={swimlaneParentId}
+  data-swimlane-dimension={swimlaneDimension}
+  data-swimlane-key={swimlaneKey}
   role="button"
   tabindex="0"
   onclick={open}

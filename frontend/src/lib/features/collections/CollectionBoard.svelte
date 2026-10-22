@@ -3,6 +3,7 @@
   import { useEventListener } from 'runed';
   import { t } from '../../stores/i18n.svelte.js';
   import { items as itemsApi } from '../../api/items.js';
+  import { collections as collectionsApi } from '../../api/collections.js';
   import { workspaces as workspacesApi } from '../../api/workspaces.js';
   import { iterations as iterationsApi } from '../../api/milestones.js';
   import { navigate } from '../../router.js';
@@ -20,6 +21,25 @@
     buildDisplayColumns,
     statusIdForBoardColumnMove,
   } from './boardColumns.js';
+  import {
+    BOARD_GROUP_BY_ITEM_TYPE,
+    BOARD_GROUP_BY_MILESTONE,
+    MILESTONE_HIDDEN_COMPLETED_KEY,
+    boardGroupPreferenceStorageKey,
+    buildBoardSwimlanes,
+    legacyBoardGroupItemTypeStorageKey,
+    milestonesFromItems,
+    resolveStoredBoardGroupBy,
+    serializeBoardGroupBy,
+  } from './boardSwimlanes.js';
+  import { buildBoardConfigurationPayload } from './boardConfigPayload.js';
+  import {
+    milestoneAssignableToWorkspace,
+    milestoneDropRemovals,
+    primaryLaneKeyForItem,
+    SWIMLANE_NONE_KEY,
+  } from './swimlanes.js';
+  import { confirm } from '../../composables/useConfirm.js';
   import { resolveBoardWorkspaces } from './boardWorkspaces.js';
   import { infoToast, successToast, warningToast } from '../../stores/toasts.svelte.js';
   import Plus from '@lucide/svelte/icons/plus';
@@ -27,6 +47,7 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import MoreHorizontal from '@lucide/svelte/icons/more-horizontal';
   import Layers from '@lucide/svelte/icons/layers';
+  import Milestone from '@lucide/svelte/icons/milestone';
   import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
   import ItemPicker from '../../pickers/ItemPicker.svelte';
   import { buildIterationPickerConfig } from '../iterations/iterationPickerUtils.js';
@@ -45,6 +66,7 @@
   import BoardItemCard from './BoardItemCard.svelte';
   import ItemKey from '../../components/ItemKey.svelte';
   import CollectionViewSwitcher from './CollectionViewSwitcher.svelte';
+  import MilestoneSwimlaneConfigDialog from './MilestoneSwimlaneConfigDialog.svelte';
   import DropdownMenu from '../../layout/DropdownMenu.svelte';
   import { backlogStore } from '../../stores/backlogStore.svelte.js';
   import { workspaceDataStore } from '../../stores/workspaceDataStore.svelte.js';
@@ -57,6 +79,7 @@
   import { invalidateSLAState } from '../sla/slaState.js';
   import { agentRuns } from '../../stores/agentRuns.svelte.js';
   import { getVisibleColor, hexToRgb } from '../../utils/colorUtils.js';
+  import { formatDateOnly } from '../../utils/dateFormatter.js';
   import { showCreatedItemToast } from '../../utils/createdItemToast.js';
   import {
     childItemTypesForParent,
@@ -102,6 +125,19 @@
   let transitions = $state([]);
   let boardConfig = $state(null);
   let cardFields = $derived((boardConfig?.card_fields || []).slice().sort((a, b) => a.display_order - b.display_order));
+  // Milestone-swimlane preferences live on the board configuration so they are
+  // shared by every viewer and survive reloads. Missing config means the
+  // pre-configuration defaults: no pinned global milestones, completed shown.
+  let milestoneSwimlaneConfig = $derived(
+    boardConfig?.view_settings?.milestone_swimlanes ?? {
+      global_milestone_ids: [],
+      show_completed: true,
+    }
+  );
+  let pinnedGlobalMilestoneIds = $derived(milestoneSwimlaneConfig.global_milestone_ids ?? []);
+  let showCompletedMilestones = $derived(milestoneSwimlaneConfig.show_completed !== false);
+  let milestoneSwimlaneDialogOpen = $state(false);
+  let savingMilestoneSwimlaneConfig = $state(false);
 
   let loading = $state(true);
   let currentCollectionName = $derived(collectionStore.collectionName);
@@ -162,8 +198,8 @@
   let allIterations = $state([]);
   let iterationFilterId = $state(null);
 
-  // Swimlane grouping state
-  let groupByItemTypeId = $state(null);
+  // Board grouping: null, item-type lanes, or milestone lanes.
+  let boardGroupBy = $state(null);
   let excludeRightmostSwimlaneParents = $state(false);
   let swimlaneCollapsed = $state({});
 
@@ -293,21 +329,47 @@
     }
   }
 
-  function initQuickAdd(columnId, statusId, quickAddKey = columnId, parentItem = null) {
+  function quickAddWorkspacesForLane(lane) {
+    const laneMilestoneId = lane?.dimension === BOARD_GROUP_BY_MILESTONE
+      ? milestoneIdForLaneKey(lane.key)
+      : null;
+    const laneMilestone = laneMilestoneId == null
+      ? null
+      : milestoneLanesReferenceById.get(laneMilestoneId);
+    // A workspace-local milestone can only be attached to an item in its own
+    // workspace; global milestones work everywhere.
+    return laneMilestone && !laneMilestone.is_global && laneMilestone.workspace_id != null
+      ? creatableWorkspaces.filter(
+          (candidate) => Number(candidate.id) === Number(laneMilestone.workspace_id)
+        )
+      : creatableWorkspaces;
+  }
+
+  function initQuickAdd(columnId, statusId, quickAddKey = columnId, parentItem = null, lane = null) {
     const parentId = parentItem?.id ?? null;
+    const laneMilestoneId = lane?.dimension === BOARD_GROUP_BY_MILESTONE
+      ? milestoneIdForLaneKey(lane.key)
+      : null;
+    const laneMilestone = laneMilestoneId == null
+      ? null
+      : milestoneLanesReferenceById.get(laneMilestoneId);
+    const laneWorkspaces = quickAddWorkspacesForLane(lane);
 
     const preselectedWorkspaceId = parentItem?.workspace_id
-      ?? (creatableWorkspaces.length === 1 ? creatableWorkspaces[0].id : null);
+      ?? laneMilestone?.workspace_id
+      ?? (laneWorkspaces.length === 1 ? laneWorkspaces[0].id : null);
 
     quickAddState[quickAddKey] = {
       show: true,
       workspaceId: preselectedWorkspaceId,
+      workspaces: laneWorkspaces,
       itemTypeId: null,
       availableTypes: [],
       loadingTypes: Boolean(preselectedWorkspaceId),
       statusId,
       parentId,
       parentItem,
+      laneMilestoneId,
       title: '',
       error: null
     };
@@ -367,6 +429,9 @@
       };
       if (state.parentId) {
         payload.parent_id = state.parentId;
+      }
+      if (state.laneMilestoneId != null) {
+        payload.milestone_ids = [state.laneMilestoneId];
       }
 
       const newItem = await itemsApi.create(payload);
@@ -464,8 +529,12 @@
   }
 
   $effect(() => {
-    if (groupByItemTypeId && itemTypes.length > 0 && !itemTypes.some(type => type.id === groupByItemTypeId)) {
-      setGroupByItemType(null);
+    if (
+      boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE &&
+      itemTypes.length > 0 &&
+      !itemTypes.some(type => type.id === boardGroupBy.itemTypeId)
+    ) {
+      setBoardGroupBy(null);
     }
   });
 
@@ -488,13 +557,15 @@
     dependencyLoader.reset();
     allIterations = [];
     iterationFilterId = null;
-    groupByItemTypeId = null;
+    boardGroupBy = null;
     excludeRightmostSwimlaneParents = false;
     swimlaneCollapsed = {};
     try {
-      const savedGroupBy = localStorage.getItem(groupByStorageKey());
-      const savedGroupById = savedGroupBy ? parseInt(savedGroupBy, 10) : null;
-      if (savedGroupById) groupByItemTypeId = savedGroupById;
+      boardGroupBy = resolveStoredBoardGroupBy(
+        localStorage.getItem(boardGroupStorageKey()),
+        localStorage.getItem(legacyGroupByItemTypeStorageKey()),
+        []
+      );
       const savedExcludeRightmost = localStorage.getItem(excludeRightmostSwimlaneParentsStorageKey());
       if (savedExcludeRightmost !== null) {
         excludeRightmostSwimlaneParents = savedExcludeRightmost === 'true';
@@ -537,6 +608,35 @@
         console.error('Failed to load board configuration:', error);
       }
       boardConfig = null;
+    }
+  }
+
+  async function saveMilestoneSwimlaneConfig(next) {
+    savingMilestoneSwimlaneConfig = true;
+    try {
+      const payload = buildBoardConfigurationPayload(boardConfig, next);
+      if (boardConfig?.id) {
+        await collectionsApi.updateBoardConfiguration(
+          collectionId,
+          boardConfig.id,
+          payload,
+          workspaceId
+        );
+      } else {
+        await collectionsApi.createBoardConfiguration(collectionId, workspaceId, payload);
+      }
+      collectionStore.invalidateBoardConfiguration(workspaceId, collectionId);
+      await loadBoardConfig();
+      // Lane membership changed; drop stale collapse state so the new lanes
+      // render expanded.
+      swimlaneCollapsed = {};
+      milestoneSwimlaneDialogOpen = false;
+      successToast(t('boardControls.milestoneSwimlanesSaved'));
+    } catch (error) {
+      console.error('Failed to save milestone swimlane configuration:', error);
+      warningToast(error?.message || t('dialogs.alerts.failedToSave', { error: error?.message ?? '' }));
+    } finally {
+      savingMilestoneSwimlaneConfig = false;
     }
   }
 
@@ -607,6 +707,26 @@
       : items;
   });
 
+  // Workspace boards use the workspace + global milestone catalog so empty
+  // active lanes can act as drop targets. Cross-workspace boards have no global
+  // catalog, so derive the reference from the loaded cards (WI-1587).
+  let milestoneLanesReference = $derived.by(() => {
+    return workspaceId ? milestones : milestonesFromItems(items);
+  });
+  let milestoneLanesReferenceById = $derived(
+    new Map(milestoneLanesReference.map((milestone) => [Number(milestone.id), milestone]))
+  );
+  // Global milestones available to pin as always-present lanes. Workspace
+  // boards read the catalog; cross-workspace boards fall back to the milestones
+  // embedded in the loaded cards.
+  let globalMilestonesForConfig = $derived(
+    milestoneLanesReference
+      .filter((milestone) => milestone.is_global)
+      .slice()
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  );
+  let boardGroupingActive = $derived(Boolean(boardGroupBy));
+
   function getItemsByStatus(statusId, itemSubset = filteredItems) {
     return itemSubset.filter(
       item => boardStatusIdForItem(item, validColumns, personalWorkspaceIds) === statusId
@@ -619,11 +739,15 @@
     ));
   }
 
-  function parseLaneParentId(value) {
-    if (!groupByItemTypeId) return undefined;
-    if (value == null || value === '') return null;
-    const parsed = parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : null;
+  function parseLaneTarget(element) {
+    const dimension = element?.dataset?.swimlaneDimension || '';
+    if (dimension !== BOARD_GROUP_BY_ITEM_TYPE && dimension !== BOARD_GROUP_BY_MILESTONE) {
+      return null;
+    }
+    return {
+      dimension,
+      key: element.dataset.swimlaneKey || SWIMLANE_NONE_KEY,
+    };
   }
 
   function isExcludedRightmostSwimlaneParent(item) {
@@ -635,39 +759,100 @@
     );
   }
 
-  function isEligibleSwimlaneParent(item) {
-    return item.item_type_id === groupByItemTypeId && !isExcludedRightmostSwimlaneParent(item);
+  function milestoneLaneKeyForItem(item) {
+    return primaryLaneKeyForItem(item, BOARD_GROUP_BY_MILESTONE, milestoneLanesReference);
   }
 
-  function getItemsForLaneParent(parentId) {
-    if (!groupByItemTypeId) return filteredItems;
-    const parentIds = new Set(items
-      .filter(isEligibleSwimlaneParent)
-      .map(item => item.id));
+  function milestoneIdForLaneKey(key) {
+    if (key === SWIMLANE_NONE_KEY) return null;
+    const id = Number(String(key).split('-').pop());
+    return Number.isFinite(id) ? id : null;
+  }
 
-    if (parentId != null) {
-      return filteredItems.filter(item => item.parent_id === parentId && item.id !== parentId);
+  function milestoneForLaneKey(key) {
+    const id = milestoneIdForLaneKey(key);
+    if (id == null) return null;
+    return (
+      milestoneLanesReferenceById.get(id) ??
+      boardSwimlanes.find((lane) => lane.milestone?.id === id)?.milestone ??
+      null
+    );
+  }
+
+  function milestoneNameForId(id, item) {
+    return (
+      item?.milestones?.find((milestone) => milestone.id === id)?.name ??
+      milestoneLanesReferenceById.get(id)?.name ??
+      `Milestone #${id}`
+    );
+  }
+
+  function wouldChangeBoardLane(item, target) {
+    if (!boardGroupBy || !target) return false;
+    if (target.dimension === BOARD_GROUP_BY_ITEM_TYPE) {
+      const targetParentId =
+        target.key === SWIMLANE_NONE_KEY ? null : Number(String(target.key).split('-').pop());
+      return (item.parent_id ?? null) !== targetParentId;
+    }
+    if (target.dimension === BOARD_GROUP_BY_MILESTONE) {
+      // The hidden-completed aggregate lane is not a milestone assignment; a
+      // drop there keeps the card's milestone and only changes its column/rank.
+      if (target.key === MILESTONE_HIDDEN_COMPLETED_KEY) return false;
+      return milestoneLaneKeyForItem(item) !== target.key;
+    }
+    return false;
+  }
+
+  function getItemsForBoardLane(lane) {
+    if (!boardGroupBy) return filteredItems;
+
+    if (boardGroupBy.dimension === BOARD_GROUP_BY_ITEM_TYPE) {
+      if (!lane || lane.dimension !== BOARD_GROUP_BY_ITEM_TYPE) return filteredItems;
+      if (lane.key !== SWIMLANE_NONE_KEY) {
+        const parentId = Number(String(lane.key).split('-').pop());
+        if (!Number.isFinite(parentId)) return [];
+        return filteredItems.filter((item) => item.parent_id === parentId && item.id !== parentId);
+      }
+      const parentIds = new Set(items
+        .filter((item) => item.item_type_id === boardGroupBy.itemTypeId && !isExcludedRightmostSwimlaneParent(item))
+        .map((item) => item.id));
+      return filteredItems.filter((item) => {
+        if (item.item_type_id === boardGroupBy.itemTypeId) return false;
+        if (item.parent_id && parentIds.has(item.parent_id)) return false;
+        return true;
+      });
     }
 
-    return filteredItems.filter(item => {
-      if (item.item_type_id === groupByItemTypeId) return false;
-      if (item.parent_id && parentIds.has(item.parent_id)) return false;
-      return true;
-    });
-  }
+    if (boardGroupBy.dimension === BOARD_GROUP_BY_MILESTONE) {
+      if (!lane || lane.dimension !== BOARD_GROUP_BY_MILESTONE) return filteredItems;
+      if (lane.key === MILESTONE_HIDDEN_COMPLETED_KEY) {
+        return (
+          boardSwimlanes.find((entry) => entry.key === MILESTONE_HIDDEN_COMPLETED_KEY)?.items ?? []
+        );
+      }
+      return filteredItems.filter((item) => milestoneLaneKeyForItem(item) === lane.key);
+    }
 
-  function wouldChangeLaneParent(item, targetParentId) {
-    if (!groupByItemTypeId || targetParentId === undefined) return false;
-    return (item.parent_id ?? null) !== targetParentId;
+    return filteredItems;
   }
 
   function warnUnsupportedCombinedBoardMove() {
     warningToast(t('collections.combinedBoardMoveUnsupported'));
   }
 
-  async function updateItemParentForLane(item, targetParentId) {
-    if (!groupByItemTypeId || targetParentId === undefined) return item;
+  function markSwimlaneMoveFailed(error) {
+    if (error && typeof error === 'object') {
+      error.swimlaneMoveFailed = true;
+    }
+    return error;
+  }
 
+  async function updateItemParentForLane(item, target) {
+    if (boardGroupBy?.dimension !== BOARD_GROUP_BY_ITEM_TYPE) return item;
+    if (!target || target.dimension !== BOARD_GROUP_BY_ITEM_TYPE) return item;
+
+    const targetParentId =
+      target.key === SWIMLANE_NONE_KEY ? null : Number(String(target.key).split('-').pop());
     const currentParentId = item.parent_id ?? null;
     if (currentParentId === targetParentId) return item;
 
@@ -678,11 +863,82 @@
     } catch (error) {
       console.error('Failed to move item to swimlane:', error);
       warningToast(t('collections.swimlaneMoveFailed'));
-      if (error && typeof error === 'object') {
-        error.swimlaneMoveFailed = true;
-      }
-      throw error;
+      throw markSwimlaneMoveFailed(error);
     }
+  }
+
+  async function updateItemMilestoneLane(item, target) {
+    if (boardGroupBy?.dimension !== BOARD_GROUP_BY_MILESTONE) return item;
+    if (!target || target.dimension !== BOARD_GROUP_BY_MILESTONE) return item;
+    if (!wouldChangeBoardLane(item, target)) return item;
+
+    const targetId = milestoneIdForLaneKey(target.key);
+    const milestoneIds = targetId == null ? [] : [targetId];
+
+    if (targetId != null) {
+      const targetMilestone = milestoneLanesReferenceById.get(targetId);
+      if (
+        targetMilestone &&
+        !milestoneAssignableToWorkspace(targetMilestone, item.workspace_id)
+      ) {
+        warningToast(t('collections.milestoneWorkspaceMismatch'));
+        const error = new Error('milestone workspace mismatch');
+        throw markSwimlaneMoveFailed(error);
+      }
+    }
+
+    try {
+      const updatedItem = await itemsApi.update(item.id, { milestone_ids: milestoneIds });
+      collectionStore.patchItem(item.id, updatedItem);
+      return { ...item, ...updatedItem };
+    } catch (error) {
+      console.error('Failed to move item to milestone swimlane:', error);
+      warningToast(t('collections.swimlaneMoveFailed'));
+      throw markSwimlaneMoveFailed(error);
+    }
+  }
+
+  async function applyLaneTarget(item, target) {
+    if (!boardGroupBy || !target) return item;
+    if (boardGroupBy.dimension === BOARD_GROUP_BY_ITEM_TYPE) {
+      return updateItemParentForLane(item, target);
+    }
+    if (boardGroupBy.dimension === BOARD_GROUP_BY_MILESTONE) {
+      return updateItemMilestoneLane(item, target);
+    }
+    return item;
+  }
+
+  async function confirmMilestoneLaneDrop(item, target) {
+    if (target?.dimension !== BOARD_GROUP_BY_MILESTONE) return true;
+    if (!wouldChangeBoardLane(item, target)) return true;
+
+    const removedIds = milestoneDropRemovals(
+      item,
+      BOARD_GROUP_BY_MILESTONE,
+      target.key,
+      milestoneLanesReference
+    );
+    if (!removedIds?.length) return true;
+
+    const removedNames = removedIds
+      .map((id) => milestoneNameForId(id, item))
+      .join(', ');
+    const targetMilestone = milestoneForLaneKey(target.key);
+    const message = target.key === SWIMLANE_NONE_KEY
+      ? t('collections.milestoneLaneConfirmUnassign', { milestones: removedNames })
+      : t('collections.milestoneLaneConfirmAssign', {
+          milestone: targetMilestone?.name || t('common.unassigned'),
+          milestones: removedNames,
+        });
+
+    return confirm({
+      title: t('collections.milestoneLaneConfirmTitle'),
+      message,
+      confirmText: t('collections.milestoneLaneConfirmAction'),
+      cancelText: t('common.cancel'),
+      variant: 'warning',
+    });
   }
 
   // Status badges use an accessible-contrast pass so colours read against the
@@ -720,8 +976,12 @@
     return collectionId ? `collection-${collectionId}` : `workspace-${workspaceId || 'global'}`;
   }
 
-  function groupByStorageKey() {
-    return `board-group-by-item-type-${boardPreferenceScope()}`;
+  function boardGroupStorageKey() {
+    return boardGroupPreferenceStorageKey(boardPreferenceScope());
+  }
+
+  function legacyGroupByItemTypeStorageKey() {
+    return legacyBoardGroupItemTypeStorageKey(boardPreferenceScope());
   }
 
   function excludeRightmostSwimlaneParentsStorageKey() {
@@ -752,15 +1012,17 @@
     collectionStore.setBoardSortMode(sortMode);
   }
 
-  function setGroupByItemType(itemTypeId) {
-    groupByItemTypeId = itemTypeId;
+  function setBoardGroupBy(groupBy) {
+    boardGroupBy = groupBy;
     swimlaneCollapsed = {};
     try {
-      if (itemTypeId) {
-        localStorage.setItem(groupByStorageKey(), String(itemTypeId));
+      const serialized = serializeBoardGroupBy(groupBy);
+      if (serialized) {
+        localStorage.setItem(boardGroupStorageKey(), serialized);
       } else {
-        localStorage.removeItem(groupByStorageKey());
+        localStorage.removeItem(boardGroupStorageKey());
       }
+      localStorage.removeItem(legacyGroupByItemTypeStorageKey());
     } catch (e) { /* ignore storage errors */ }
   }
 
@@ -883,7 +1145,7 @@
     const columnStatusIds = new Set(column.status_ids || []);
     const useServerTotal =
       deferred &&
-      !selectedGroupByItemType &&
+      !boardGroupingActive &&
       !search.query.trim() &&
       !iterationFilterId &&
       deferred.statusIds.every((statusId) => columnStatusIds.has(statusId));
@@ -900,12 +1162,27 @@
   }
 
   let selectedGroupByItemType = $derived(
-    groupByItemTypeId ? itemTypes.find(type => type.id === groupByItemTypeId) : null
+    boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE
+      ? itemTypes.find(type => type.id === boardGroupBy.itemTypeId) ?? null
+      : null
+  );
+  let selectedGroupByLabel = $derived(
+    boardGroupBy?.dimension === BOARD_GROUP_BY_MILESTONE
+      ? t('boardControls.milestoneSwimlanes')
+      : selectedGroupByItemType
+        ? t('boardControls.groupByValue', { name: selectedGroupByItemType.name })
+        : t('boardControls.groupBy')
   );
 
   let hiddenRightmostSwimlaneParentCount = $derived.by(() => {
-    if (!groupByItemTypeId || !excludeRightmostSwimlaneParents || !rightmostBoardColumn) return 0;
-    return items.filter(item => item.item_type_id === groupByItemTypeId && isExcludedRightmostSwimlaneParent(item)).length;
+    if (
+      boardGroupBy?.dimension !== BOARD_GROUP_BY_ITEM_TYPE ||
+      !excludeRightmostSwimlaneParents ||
+      !rightmostBoardColumn
+    ) return 0;
+    return items.filter(
+      item => item.item_type_id === boardGroupBy.itemTypeId && isExcludedRightmostSwimlaneParent(item)
+    ).length;
   });
 
   let sortByMenuItems = $derived([
@@ -914,7 +1191,7 @@
       testid: 'board-sort-rank',
       title: t('boardControls.rankMode'),
       subtitle: t('boardControls.rankModeDescription'),
-      badge: sortMode === 'rank' ? t('common.selected') : '',
+      selected: sortMode === 'rank',
       onClick: () => setSortMode('rank')
     },
     {
@@ -922,7 +1199,7 @@
       testid: 'board-sort-bubble',
       title: t('boardControls.bubbleMode'),
       subtitle: t('boardControls.bubbleModeDescription'),
-      badge: sortMode === 'bubble' ? t('common.selected') : '',
+      selected: sortMode === 'bubble',
       onClick: () => setSortMode('bubble')
     }
   ]);
@@ -936,10 +1213,18 @@
         testid: 'board-group-by-none',
         title: t('boardControls.noSwimlanes'),
         subtitle: t('boardControls.noSwimlanesDescription'),
-        badge: groupByItemTypeId ? '' : t('common.selected'),
-        onClick: () => setGroupByItemType(null)
+        selected: !boardGroupBy,
+        onClick: () => setBoardGroupBy(null)
       },
-      ...(groupByItemTypeId ? [
+      {
+        id: 'group-milestone',
+        testid: 'board-group-by-milestone',
+        title: t('boardControls.milestoneSwimlanes'),
+        subtitle: t('boardControls.milestoneSwimlanesDescription'),
+        selected: boardGroupBy?.dimension === BOARD_GROUP_BY_MILESTONE,
+        onClick: () => setBoardGroupBy({ dimension: BOARD_GROUP_BY_MILESTONE })
+      },
+      ...(boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE ? [
         { id: 'group-rightmost-toggle-divider', type: 'divider' },
         {
           id: 'group-rightmost-toggle',
@@ -961,76 +1246,39 @@
         title: type.name,
         subtitle: t('boardControls.useAsSwimlanes'),
         itemType: type,
-        badge: groupByItemTypeId === type.id ? t('common.selected') : '',
-        onClick: () => setGroupByItemType(type.id)
-      }))
-    ];
-  });
-
-  let boardSwimlanes = $derived.by(() => {
-    if (!groupByItemTypeId) {
-      return [{
-        id: 'all',
-        title: t('collections.allItems'),
-        parent: null,
-        items: filteredItems,
-        isDefault: true,
-        isUnassigned: false,
-        itemCount: filteredItems.length,
-        parentIsVisible: false
-      }];
-    }
-
-    const parentItems = items.filter(isEligibleSwimlaneParent);
-    const parentIds = new Set(parentItems.map(item => item.id));
-    const visibleItemIds = new Set(filteredItems.map(item => item.id));
-
-    // Bucket children by parent once instead of rescanning filteredItems per
-    // parent; the scan is O(parents × items) on large boards.
-    const childrenByParent = new Map();
-    for (const item of filteredItems) {
-      if (item.parent_id == null || item.parent_id === item.id) continue;
-      const bucket = childrenByParent.get(item.parent_id);
-      if (bucket) bucket.push(item);
-      else childrenByParent.set(item.parent_id, [item]);
-    }
-
-    const lanes = parentItems
-      .map(parent => {
-        const laneItems = childrenByParent.get(parent.id) ?? [];
-        return {
-          id: `parent-${parent.id}`,
-          title: parent.title,
-          parent,
-          items: laneItems,
-          isDefault: false,
-          isUnassigned: false,
-          itemCount: laneItems.length,
-          parentIsVisible: visibleItemIds.has(parent.id)
-        };
-      })
-      .filter(lane => lane.itemCount > 0 || lane.parentIsVisible);
-
-    const unassignedItems = filteredItems.filter(item => {
-      if (item.item_type_id === groupByItemTypeId) return false;
-      if (item.parent_id && parentIds.has(item.parent_id)) return false;
-      return true;
-    });
-
-    return [
-      ...lanes,
+        selected:
+          boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE && boardGroupBy.itemTypeId === type.id,
+        onClick: () => setBoardGroupBy({ dimension: BOARD_GROUP_BY_ITEM_TYPE, itemTypeId: type.id })
+      })),
+      { id: 'group-config-divider', type: 'divider' },
       {
-        id: 'unassigned',
-        title: t('common.unassigned'),
-        parent: null,
-        items: unassignedItems,
-        isDefault: false,
-        isUnassigned: true,
-        itemCount: unassignedItems.length,
-        parentIsVisible: false
+        id: 'group-milestone-config',
+        testid: 'board-group-by-configure',
+        title: t('boardControls.configureMilestones'),
+        subtitle: t('boardControls.configureMilestonesDescription'),
+        onClick: () => { milestoneSwimlaneDialogOpen = true; }
       }
     ];
   });
+
+  let boardSwimlanes = $derived(
+    buildBoardSwimlanes({
+      groupBy: boardGroupBy,
+      items,
+      filteredItems,
+      milestones: milestoneLanesReference,
+      statusIdForItem: (item) =>
+        boardStatusIdForItem(item, validColumns, personalWorkspaceIds),
+      rightmostStatusIds: rightmostBoardColumnStatusIds,
+      excludeRightmostSwimlaneParents,
+      includeEmptyMilestones: true,
+      globalMilestoneIds: pinnedGlobalMilestoneIds,
+      showCompletedMilestones,
+      unassignedTitle: t('common.unassigned'),
+      hiddenCompletedTitle: t('boardControls.completedMilestones'),
+      allItemsTitle: t('collections.allItems'),
+    })
+  );
 
   // Calculate total visible items across all display columns
   let totalVisibleItems = $derived.by(() => {
@@ -1193,8 +1441,13 @@
         const item = itemsById.get(itemId);
         const targetStatus = getStatusByItemId(itemId);
         if (item && data.type === 'work-item' && closestEdge && targetStatus) {
-          const targetLaneParentId = parseLaneParentId(element.dataset.swimlaneParentId);
-          handleEdgeBasedDrop(data.item, item, closestEdge, targetStatus, targetLaneParentId);
+          handleEdgeBasedDrop(
+            data.item,
+            item,
+            closestEdge,
+            targetStatus,
+            parseLaneTarget(element)
+          );
         }
       }
     });
@@ -1256,12 +1509,18 @@
           personalWorkspaceIds,
         );
         if (transitionStatusId == null) return;
-        const targetLaneParentId = parseLaneParentId(element.dataset.swimlaneParentId);
+        const laneTarget = parseLaneTarget(element);
         const isSameStatus = data.item.status_id === transitionStatusId;
-        if (!isSameStatus && wouldChangeLaneParent(data.item, targetLaneParentId)) {
+        if (
+          !isSameStatus &&
+          boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE &&
+          wouldChangeBoardLane(data.item, laneTarget)
+        ) {
           warnUnsupportedCombinedBoardMove();
           return;
         }
+        if (!(await confirmMilestoneLaneDrop(data.item, laneTarget))) return;
+
         const previousStatusId = data.item.status_id;
         if (!isSameStatus) updateLocalItemStatus(data.item.id, transitionStatusId);
         try {
@@ -1270,7 +1529,7 @@
             droppedItem = await itemsApi.transition(data.item.id, transitionStatusId);
             mergeLocalItem(data.item.id, droppedItem);
           }
-          await updateItemParentForLane(droppedItem, targetLaneParentId);
+          await applyLaneTarget(droppedItem, laneTarget);
         } catch (err) {
           if (!isSameStatus) updateLocalItemStatus(data.item.id, previousStatusId);
           console.error('Board drop failed:', err);
@@ -1317,7 +1576,7 @@
     collectionStore.patchItem(itemId, updatedItem);
   }
 
-  async function handleEdgeBasedDrop(draggedItem, targetItem, closestEdge, targetStatus, targetLaneParentId = undefined) {
+  async function handleEdgeBasedDrop(draggedItem, targetItem, closestEdge, targetStatus, laneTarget = null) {
     // Create a unique identifier for this drop operation
     const dropId = `${draggedItem.id}-edge-${targetItem.id}-${closestEdge}`;
 
@@ -1350,9 +1609,17 @@
       // Check if we need to update status
       const isSameStatus = currentStatusId === targetStatusId;
 
-      if (!isSameStatus && wouldChangeLaneParent(draggedItem, targetLaneParentId)) {
+      if (
+        !isSameStatus &&
+        boardGroupBy?.dimension === BOARD_GROUP_BY_ITEM_TYPE &&
+        wouldChangeBoardLane(draggedItem, laneTarget)
+      ) {
         warnUnsupportedCombinedBoardMove();
         reloadCollection();
+        return;
+      }
+
+      if (!(await confirmMilestoneLaneDrop(draggedItem, laneTarget))) {
         return;
       }
 
@@ -1372,14 +1639,14 @@
         }
       }
 
-      draggedItem = await updateItemParentForLane(draggedItem, targetLaneParentId);
+      draggedItem = await applyLaneTarget(draggedItem, laneTarget);
 
       // Bubble Mode disables manual rank ordering. Cross-column drags above have
       // already transitioned status (which bumps the card to the top via
       // last_active_at); a same-column drag is a no-op. Either way, skip the
       // frac_index reorder and just refresh.
       if (sortMode === 'bubble') {
-        if (isSameStatus && !wouldChangeLaneParent(draggedItem, targetLaneParentId)) {
+        if (isSameStatus && !wouldChangeBoardLane(draggedItem, laneTarget)) {
           infoToast(
             t('collections.manual_sort_unavailable'),
             t('collections.manual_sort_unavailable_title')
@@ -1390,7 +1657,7 @@
       }
 
       // Get items in the target status for position calculation
-      const laneItems = targetLaneParentId === undefined ? filteredItems : getItemsForLaneParent(targetLaneParentId);
+      const laneItems = boardGroupingActive ? getItemsForBoardLane(laneTarget) : filteredItems;
       const statusItems = getItemsByStatus(targetStatus.id, laneItems);
 
       // Find the target item's position in the sorted status items
@@ -1550,11 +1817,11 @@
                 <DropdownMenu
                   items={groupByMenuItems}
                   triggerIcon={Layers}
-                  triggerText={selectedGroupByItemType ? t('boardControls.groupByValue', { name: selectedGroupByItemType.name }) : t('boardControls.groupBy')}
+                  triggerText={selectedGroupByLabel}
                   placement="bottom-end"
                   maxWidth="max-w-xs"
-                  triggerClass="px-3 py-1.5 rounded text-sm font-medium transition-colors {selectedGroupByItemType ? 'shadow-sm' : ''}"
-                  triggerStyle={selectedGroupByItemType ? 'color: var(--ds-text); background-color: var(--ctx-surface-raised, var(--ds-surface-raised));' : 'color: var(--ds-text);'}
+                  triggerClass="px-3 py-1.5 rounded text-sm font-medium transition-colors {boardGroupingActive ? 'shadow-sm' : ''}"
+                  triggerStyle={boardGroupingActive ? 'color: var(--ds-text); background-color: var(--ctx-surface-raised, var(--ds-surface-raised));' : 'color: var(--ds-text);'}
                   triggerTestid="board-group-by-menu"
                 />
                 <DropdownMenu
@@ -1630,7 +1897,7 @@
       {:else}
         <!-- Board Columns / Swimlanes -->
         <div
-          class={selectedGroupByItemType ? 'space-y-4' : ''}
+          class={boardGroupingActive ? 'space-y-4' : ''}
           data-testid="board-view"
         >
           {#each boardSwimlanes as lane (lane.id)}
@@ -1640,11 +1907,12 @@
                  add affordance rather than opening a form that cannot submit. -->
             {@const laneQuickAddTypes = quickAddTypesFor(lane.parent ?? null)}
             <section
-              class={selectedGroupByItemType ? 'rounded-lg border overflow-hidden' : ''}
-              style={selectedGroupByItemType ? `${styles.glassStyle?.(10) ?? ''} border-color: var(--ctx-border, var(--ds-border));` : ''}
+              class={boardGroupingActive ? 'rounded-lg border overflow-hidden' : ''}
+              style={boardGroupingActive ? `${styles.glassStyle?.(10) ?? ''} border-color: var(--ctx-border, var(--ds-border));` : ''}
               data-board-swimlane={lane.id}
+              data-testid={`board-lane-${lane.id}`}
             >
-              {#if selectedGroupByItemType}
+              {#if boardGroupingActive}
                 <div class="flex items-center justify-between gap-3 px-3 py-2 border-b" style="border-color: var(--ctx-border, var(--ds-border));">
                   <Button
                     variant="ghost"
@@ -1658,22 +1926,41 @@
                     {:else}
                       <ChevronRight class="w-4 h-4 flex-shrink-0" />
                     {/if}
-                    {#if selectedGroupByItemType}
+                    {#if lane.dimension === BOARD_GROUP_BY_ITEM_TYPE && selectedGroupByItemType}
                       <ItemTypeIcon
                         icon={selectedGroupByItemType.icon}
                         color={lane.isUnassigned ? 'var(--ds-background-neutral-bold, #6b7280)' : selectedGroupByItemType.color}
                         title={selectedGroupByItemType.name}
+                      />
+                    {:else if lane.dimension === BOARD_GROUP_BY_MILESTONE}
+                      <Milestone
+                        class="w-4 h-4 flex-shrink-0"
+                        style="color: {lane.isUnassigned || lane.isAggregate ? 'var(--ds-background-neutral-bold, #6b7280)' : (lane.milestone?.category_color || 'var(--ds-text-subtle)')};"
                       />
                     {/if}
                     <span class="min-w-0 flex-1 text-left">
                       <span class="block font-semibold truncate">{lane.title}</span>
                       {#if lane.parent}
                         <span class="block text-xs font-normal truncate" style="color: var(--ds-text-subtle);">
-                          <ItemKey item={lane.parent} {workspace} clickable={false} /> · {selectedGroupByItemType.name} swimlane
+                          <ItemKey item={lane.parent} {workspace} clickable={false} /> · {t('collections.itemTypeLaneHint', { type: selectedGroupByItemType?.name ?? '' })}
+                        </span>
+                      {:else if lane.dimension === BOARD_GROUP_BY_MILESTONE}
+                        <span class="block text-xs font-normal truncate" style="color: var(--ds-text-subtle);">
+                          {#if lane.isUnassigned}
+                            {t('collections.milestoneLaneUnassignedHint')}
+                          {:else if lane.isAggregate}
+                            {t('collections.milestoneLaneHiddenCompletedHint')}
+                          {:else if lane.milestone?.target_date}
+                            {formatDateOnly(lane.milestone.target_date)}
+                          {:else}
+                            {t('collections.milestoneLaneHint')}
+                          {/if}
                         </span>
                       {:else}
                         <span class="block text-xs font-normal truncate" style="color: var(--ds-text-subtle);">
-                          Items without {excludeRightmostSwimlaneParents ? 'a visible' : 'a'} {selectedGroupByItemType.name} parent
+                          {excludeRightmostSwimlaneParents
+                            ? t('collections.itemTypeLaneUnassignedVisibleHint', { type: selectedGroupByItemType?.name ?? '' })
+                            : t('collections.itemTypeLaneUnassignedHint', { type: selectedGroupByItemType?.name ?? '' })}
                         </span>
                       {/if}
                     </span>
@@ -1684,8 +1971,8 @@
                 </div>
               {/if}
 
-              {#if !selectedGroupByItemType || laneExpanded}
-                <div class="grid gap-6 {selectedGroupByItemType ? 'p-4' : ''}" style="grid-template-columns: {boardGridTemplate()};">
+              {#if !boardGroupingActive || laneExpanded}
+                <div class="grid gap-6 {boardGroupingActive ? 'p-4' : ''}" style="grid-template-columns: {boardGridTemplate()};">
                   {#each validColumns as column, columnIndex (column.id)}
                     {@const quickAddKey = `${lane.id}-${column.id}`}
                     {@const allColumnItems = getItemsByColumn(column, lane.items)}
@@ -1709,7 +1996,8 @@
                         id={`board-column-status-${column.status_ids[0]}`}
                         data-status-column
                         data-status-column-key={`${lane.id}-${column.id}-${column.status_ids[0]}`}
-                        data-swimlane-parent-id={selectedGroupByItemType && lane.parent ? lane.parent.id : ''}
+                        data-swimlane-dimension={lane.dimension ?? ''}
+                        data-swimlane-key={lane.key ?? ''}
                         data-status-id={column.status_ids[0]}
                         aria-label={t('collections.expandColumn', { name: objectDisplayName(column, 'status') })}
                         aria-expanded="false"
@@ -1734,15 +2022,16 @@
                       hiddenItemCount={hiddenColumnItemCount}
                       {isOverWip}
                       statusColumnKey={`${lane.id}-${column.id}-${column.status_ids[0]}`}
-                      swimlaneParentId={selectedGroupByItemType && lane.parent ? lane.parent.id : ''}
+                      swimlaneDimension={lane.dimension ?? ''}
+                      swimlaneKey={lane.key ?? ''}
                       statusId={column.status_ids[0]}
                       quickAddOpen={quickAddState[quickAddKey]?.show}
                       columnStyle={styles.columnStyle(12)}
                       textStyle={styles.glassTextStyle}
                       subtleTextStyle={styles.glassSubtleTextStyle}
                       dndAction={registerBoardColumn}
-                      onadd={laneQuickAddTypes.length > 0 && creatableWorkspaces.length > 0
-                        ? () => initQuickAdd(column.id, column.status_ids[0], quickAddKey, lane.parent ?? null)
+                      onadd={laneQuickAddTypes.length > 0 && quickAddWorkspacesForLane(lane).length > 0
+                        ? () => initQuickAdd(column.id, column.status_ids[0], quickAddKey, lane.parent ?? null, lane)
                         : null}
                       oncollapse={() => toggleColumnCollapse(column.id)}
                     >
@@ -1751,7 +2040,7 @@
                             <QuickAddForm
                               parentId={quickAddKey}
                               formState={quickAddState[quickAddKey]}
-                              workspaces={creatableWorkspaces}
+                              workspaces={quickAddState[quickAddKey]?.workspaces ?? creatableWorkspaces}
                               cardBgStyle={styles.cardStyle(8)}
                               onUpdateField={updateQuickAddField}
                               onCreate={createColumnItem}
@@ -1791,7 +2080,8 @@
                                 moveMenuItems={canDragCard ? moveMenuItems : []}
                                 showMoveMenu={canDragCard}
                                 closestEdge={dragState.get(item.id)?.closestEdge}
-                                swimlaneParentId={selectedGroupByItemType && lane.parent ? lane.parent.id : ''}
+                                swimlaneDimension={lane.dimension ?? ''}
+                                swimlaneKey={lane.key ?? ''}
                                 cardStyle={styles.cardStyle(0)}
                                 textStyle={styles.glassTextStyle}
                                 dndAction={registerBoardCard}
@@ -1858,6 +2148,16 @@
     onupdate={reloadCollection}
   />
 {/if}
+
+<MilestoneSwimlaneConfigDialog
+  isOpen={milestoneSwimlaneDialogOpen}
+  globalMilestones={globalMilestonesForConfig}
+  selectedGlobalMilestoneIds={pinnedGlobalMilestoneIds}
+  showCompleted={showCompletedMilestones}
+  saving={savingMilestoneSwimlaneConfig}
+  onclose={() => (milestoneSwimlaneDialogOpen = false)}
+  onsave={saveMilestoneSwimlaneConfig}
+/>
 
 <style>
   /* Collapsed board column: write the column name vertically so the narrow

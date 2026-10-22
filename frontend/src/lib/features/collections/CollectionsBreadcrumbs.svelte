@@ -28,6 +28,7 @@
     oncategorychange = null,
     isPublic = false,
     publicSlug = null,
+    publicMilestoneSwimlanes = false,
     onpublicsave = null,
     saving = false,
     slugSaved = false,
@@ -246,6 +247,7 @@
   isOpen={showPublicDialog}
   {isPublic}
   {publicSlug}
+  {publicMilestoneSwimlanes}
   {slugSaved}
   {saving}
   onclose={closePublicDialog}
