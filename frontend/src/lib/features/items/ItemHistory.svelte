@@ -11,6 +11,7 @@
 	import EmptyState from '../../components/EmptyState.svelte';
 	import Tooltip from '../../components/Tooltip.svelte';
 	import { t } from '../../stores/i18n.svelte.js';
+	import HistoryTextDiff, { historyDiffApplies } from '../../historydiff/HistoryTextDiff.svelte';
 	import { formatCostUSD, hasMeteredUsage } from '../../utils/llmUsage.js';
 	import { agentRuns } from '../../api/agentRuns.js';
 	import {
@@ -377,6 +378,9 @@
 								{:else if change.field_name === 'diagram_updated' && (change.old_value === null || change.old_value === undefined || change.old_value === '')}
 									<span class="action">updated</span>
 									<span class="new">{formatValue(change.new_value, change.resolved_new_value)}</span>
+								{:else if historyDiffApplies(change)}
+									<span class="action">changed {formatFieldName(change.field_name)}</span>
+									<HistoryTextDiff oldText={change.old_value} newText={change.new_value} />
 								{:else}
 									<span class="action">changed {formatFieldName(change.field_name)}</span>
 									<span class="old">{formatValue(change.old_value, change.resolved_old_value)}</span>

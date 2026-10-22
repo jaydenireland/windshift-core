@@ -14,6 +14,7 @@ require (
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/charmbracelet/log v0.4.2
 	github.com/charmbracelet/ssh v0.0.0-20250826160808-ebfa259c7309
+	github.com/coder/websocket v1.8.15
 	github.com/crewjam/saml v0.5.1
 	github.com/cyphar/filepath-securejoin v0.7.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.7

@@ -14,6 +14,8 @@
     expectedContentHash = '',
     onBeforeDiagramOpen = async () => {},
     onDiagramPersisted = (_payload) => {},
+    collab = null, // live co-editing session (lib/collab)
+    collabKey = '', // changes when the editor must re-bind to the session
     testId = null
   } = $props();
 
@@ -96,7 +98,7 @@
 </script>
 
 {#if MilkdownEditor}
-  {#key readonly}
+  {#key `${readonly}:${collabKey}`}
     <MilkdownEditor
       bind:this={editorInstance}
       bind:content
@@ -121,6 +123,7 @@
       {expectedContentHash}
       {onBeforeDiagramOpen}
       {onDiagramPersisted}
+      {collab}
       {testId}
     />
   {/key}

@@ -12,6 +12,8 @@
     onBeforeDiagramOpen = async () => {},
     onDiagramPersisted = (_payload) => {},
     onContentChange = () => {},
+    collab = null, // live co-editing session (lib/collab)
+    collabKey = '',
   } = $props();
 </script>
 
@@ -29,6 +31,8 @@
     {onBeforeDiagramOpen}
     {onDiagramPersisted}
     {onContentChange}
+    {collab}
+    {collabKey}
   />
 </div>
 

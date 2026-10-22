@@ -26,6 +26,7 @@ import (
 	"windshift/internal/aitools"
 	"windshift/internal/auth"
 	"windshift/internal/authz"
+	"windshift/internal/collab"
 	"windshift/internal/config"
 	"windshift/internal/database"
 	"windshift/internal/email"
@@ -1806,6 +1807,14 @@ func (s *Server) initialize() error {
 		Push: pushHandler,
 	}
 	routes.RegisterAll(routeDeps)
+
+	// Live co-editing; all of it lives in internal/collab (see FORK.md).
+	collab.Install(collab.Deps{
+		DB: s.db, Route: api.HandleH, RequireAuth: authMiddleware.RequireAuth, StreamLimiter: sseHub,
+		AllowedOrigins: csrfOrigins, DisableCSRF: cfg.DisableCSRF,
+		Pages: pageService, PagePermissions: pagePermissionService,
+		Items: itemHandler.ItemUpdateApplicationService(),
+	})
 
 	// Test-only endpoint: gated on WINDSHIFT_E2E_TEST_HOOKS=1. Lets the
 	// Playwright suite inject a synthetic SCM ref ActionEvent — same

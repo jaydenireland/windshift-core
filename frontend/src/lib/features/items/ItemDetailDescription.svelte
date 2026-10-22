@@ -5,7 +5,7 @@
   import PenTool from '@lucide/svelte/icons/pen-tool';
   import Zap from '@lucide/svelte/icons/zap';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import Button from '../../components/Button.svelte';
   import FileInput from '../../components/FileInput.svelte';
   import MilkdownEditor from '../../editors/LazyMilkdownEditor.svelte';
@@ -16,6 +16,8 @@
   import { attachmentStatus } from '../../stores/attachmentStatus.svelte.js';
   import { aiStore } from '../../stores/aiStore.svelte.js';
   import { onClickOutside } from 'runed';
+  import { useLiveItemDescription } from '../../collab/items/liveItemDescription.svelte.js';
+  import LiveItemDescriptionBar from '../../collab/items/LiveItemDescriptionBar.svelte';
 
   // Get shortcut configurations
   const saveShortcut = getShortcut('description', 'save');
@@ -61,10 +63,20 @@
   // Local state for editor content (initialized from prop when editing starts)
   let editorContent = $state('');
 
+  // Live co-editing (lib/collab): while live, edits save themselves.
+  const live = useLiveItemDescription({ item: () => item, editing: () => editingDescription && canEdit, alwaysOn: () => canEdit });
+  // The text just left in a live edit, shown until the item reloads with it.
+  let liveShown = $state(null);
+  $effect(() => {
+    void item.description;
+    liveShown = null;
+  });
+  const shownDescription = $derived(liveShown ?? item.description);
+
   // Handle image insertions from attachments or uploads
   export function insertImage(imageData) {
     // If not currently editing, start editing first
-    if (!editingDescription) {
+    if (!editingDescription && !live.alwaysOn) {
       startEditingDescription();
       // Wait for editor to be ready, then insert
       setTimeout(() => {
@@ -111,7 +123,9 @@
   // Initialize editor content when editing starts
   $effect(() => {
     if (editingDescription) {
-      editorContent = editDescription;
+      const next = editDescription;
+      // A live editor owns its text; item reloads must not replace it.
+      if (!untrack(() => live.active)) editorContent = next;
     }
   });
 
@@ -133,7 +147,24 @@
     oncanceledit?.({ field: 'description' });
   }
 
+  async function finishLiveEdit() {
+    const text = live.currentMarkdown() ?? editorContent;
+    await live.flush();
+    liveShown = text;
+    cancelEdit();
+  }
+
   function handleKeydown(event) {
+    if (live.alwaysOn) {
+      live.leave(event);
+      return;
+    }
+    if (live.autosaves && (matchesShortcut(event, saveShortcut) || matchesShortcut(event, cancelShortcut))) {
+      event.preventDefault();
+      event.stopPropagation();
+      void finishLiveEdit();
+      return;
+    }
     // Check for save shortcut (Ctrl/Cmd+Enter)
     if (matchesShortcut(event, saveShortcut)) {
       event.preventDefault();
@@ -174,28 +205,36 @@
 </script>
 
 <div class="pt-2">
-  {#if editingDescription}
+  {#if editingDescription || live.alwaysOn}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="space-y-3" onkeydown={handleKeydown} data-testid="item-description-editor">
+    <div class="space-y-3" class:item-description-live={live.alwaysOn} onkeydown={handleKeydown} data-testid="item-description-editor">
       <MilkdownEditor
         bind:this={milkdownEditor}
         bind:content={editorContent}
         placeholder={t('items.enterDescription')}
         showToolbar={true}
+        hideToolbarUntilFocus={live.alwaysOn}
         itemId={item.id}
         workspaceId={item.workspace_id}
         onImageInsert={handleImageInsert}
+        readonly={live.readonly}
+        collab={live.editorSession}
+        collabKey={live.editorKey}
       />
-      <div class="flex items-center gap-2">
-        <Button variant="primary" onclick={saveDescription} disabled={saving} keyboardHint={getDisplayString(saveShortcut)} dataTestid="item-description-save">
-          {t('common.save')}
-        </Button>
-        <Button variant="default" onclick={cancelEdit}>
-          {t('common.cancel')}
-        </Button>
-      </div>
+      {#if live.autosaves}
+        <LiveItemDescriptionBar {live} ondone={finishLiveEdit} />
+      {:else}
+        <div class="flex items-center gap-2">
+          <Button variant="primary" onclick={saveDescription} disabled={saving} keyboardHint={getDisplayString(saveShortcut)} dataTestid="item-description-save">
+            {t('common.save')}
+          </Button>
+          <Button variant="default" onclick={cancelEdit}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      {/if}
     </div>
-  {:else if item.description}
+  {:else if shownDescription}
     {#if canEdit}
       <div
         onclick={handleDescriptionClick}
@@ -207,7 +246,7 @@
         title={t('items.clickToEditDescription')}
         data-testid="item-description-display"
       >
-        <MilkdownEditor content={item.description} readonly={true} showToolbar={false} workspaceId={item.workspace_id} />
+        <MilkdownEditor content={shownDescription} readonly={true} showToolbar={false} workspaceId={item.workspace_id} />
       </div>
     {:else}
       <div
@@ -215,7 +254,7 @@
         style="color: var(--ds-text);"
         data-testid="item-description-display"
       >
-        <MilkdownEditor content={item.description} readonly={true} showToolbar={false} workspaceId={item.workspace_id} />
+        <MilkdownEditor content={shownDescription} readonly={true} showToolbar={false} workspaceId={item.workspace_id} />
       </div>
     {/if}
   {:else if canEdit}
