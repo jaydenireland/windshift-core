@@ -1,0 +1,37 @@
+/* An always-on description editor reads like plain text until it has focus:
+   no input chrome, text aligned with the surrounding layout. The outset margin
+   is constant so focusing only repaints (padding changes would re-wrap). */
+.item-description-live {
+  margin: 0 -0.75rem;
+}
+
+.item-description-live:not(:focus-within) .milkdown-editor:not(.readonly) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.item-description-live .milkdown-editor:not(.readonly) .milkdown {
+  min-height: 3rem;
+}
+
+/* On focus the toolbar appears below the text instead of above it, so the
+   text under the pointer never moves: a layout shift there would break the
+   drag-select that focused the editor in the first place. Doubled class
+   names outrank the editor's own scoped rules, which have the same
+   specificity and load later. */
+.item-description-live .milkdown-wrapper.milkdown-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.item-description-live .milkdown-toolbar.milkdown-toolbar {
+  order: 2;
+  border: 1px solid var(--ds-border);
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem;
+}
+
+.item-description-live .milkdown-editor.milkdown-editor.has-toolbar {
+  border-top: 1px solid var(--ds-border);
+  border-radius: 0.375rem 0.375rem 0 0;
+}

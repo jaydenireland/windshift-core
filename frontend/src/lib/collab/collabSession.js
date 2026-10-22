@@ -109,6 +109,7 @@ export class CollabSession {
     this.checkpointTimer = null;
     this.checkpointDeadline = null;
     this.confirmedMarkdown = null;
+    this.leaderClean = false;
     this.awaitingMarkdown = null;
     this.flushWaiters = [];
     this.listeners = new Set();
@@ -261,6 +262,7 @@ export class CollabSession {
         this.#setState({ role: m.role, storedHash: m.hash || this.state.storedHash });
         if (m.role === 'leader') {
           this.confirmedMarkdown = null;
+          this.leaderClean = !m.dirty;
           if (m.dirty) this.#scheduleCheckpoint();
           this.#runLeaderTasks();
         }
@@ -357,6 +359,7 @@ export class CollabSession {
     if (seeded && this.state.writable) this.#sendMissingUpdates(updates);
     if (this.state.role === 'leader') {
       this.confirmedMarkdown = null;
+      this.leaderClean = !m.dirty;
       if (m.dirty) this.#scheduleCheckpoint();
       this.#runLeaderTasks();
     }
@@ -394,6 +397,12 @@ export class CollabSession {
 
   #runLeaderTasks() {
     if (!this.codec || this.state.role !== 'leader' || this.state.status !== 'open') return;
+    if (this.leaderClean && this.confirmedMarkdown === null && this.state.seeded) {
+      // Took over a document with nothing pending: what the editor serializes
+      // now is already stored, so only later edits need a checkpoint.
+      this.confirmedMarkdown = this.codec.serialize(this.#currentNode());
+      this.leaderClean = false;
+    }
     if (this.pendingSeed) {
       const request = this.pendingSeed;
       this.pendingSeed = null;
@@ -466,9 +475,14 @@ export class CollabSession {
     // An identical checkpoint is already in flight; its confirmation resolves
     // any waiters.
     if (markdown === this.awaitingMarkdown) return;
-    // Unchanged markdown is still sent when forced, so the server records that
-    // the log is materialized and confirms to whoever asked.
-    if (markdown === this.confirmedMarkdown && !force) return;
+    if (markdown === this.confirmedMarkdown) {
+      // Nothing to store. The stored text can differ in formatting from what
+      // the editor serializes (list markers, blank lines); sending it anyway
+      // would rewrite the document and record a change by someone who typed
+      // nothing. A forced request (flush, close) only needs its answer.
+      if (force) this.#resolveFlushWaiters();
+      return;
+    }
     this.awaitingMarkdown = markdown;
     this.#send({ t: 'checkpoint', md: markdown, hash: this.state.storedHash, seq: this.seq });
   }

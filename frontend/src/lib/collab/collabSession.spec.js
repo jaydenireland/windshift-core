@@ -368,6 +368,46 @@ describe('CollabSession', () => {
     expect(session.state.storedHash).toBe('h3');
   });
 
+  it('never stores a text nobody changed, even when flushed or closed', async () => {
+    const { session, socket } = setup();
+    session.attachCodec(codec);
+    socket.receive({
+      t: 'init',
+      seeded: false,
+      role: 'leader',
+      writable: true,
+      seq: 0,
+      hash: 'h0',
+    });
+    // The stored markdown and the editor's serialization of it differ.
+    socket.receive({ t: 'seed_request', md: 'a\n\n\n\nb\n', hash: 'h0', epoch: 'e1' });
+    await session.requestCheckpoint();
+    expect(socket.ofType('checkpoint')).toHaveLength(0);
+    session.destroy();
+    expect(socket.ofType('checkpoint')).toHaveLength(0);
+  });
+
+  it('checkpoints only its own edits after taking over a clean document', () => {
+    const { session, socket } = setup();
+    session.attachCodec(codec);
+    socket.receive({
+      t: 'init',
+      seeded: true,
+      epoch: 'e1',
+      role: 'follower',
+      writable: true,
+      seq: 1,
+      hash: 'h1',
+      updates: [b64(seedUpdate('a\n\nb'))],
+    });
+    socket.receive({ t: 'role', role: 'leader', dirty: false, hash: 'h1' });
+    session.requestCheckpoint();
+    expect(socket.ofType('checkpoint')).toHaveLength(0);
+    typeInto(session, 0, 'x');
+    vi.advanceTimersByTime(1_000);
+    expect(socket.ofType('checkpoint').at(-1)).toMatchObject({ md: 'xa\n\nb', hash: 'h1' });
+  });
+
   it('stores pending edits when a leader closes the session', () => {
     const { session, socket } = setup();
     session.attachCodec(codec);

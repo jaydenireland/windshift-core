@@ -3,7 +3,11 @@
   import LivePageStatus from '../pages/LivePageStatus.svelte';
   import { collabText } from '../strings.js';
 
-  /** Replaces the description's Save and Cancel while it is edited live. */
+  /**
+   * Replaces the description's Save and Cancel while it is edited live. With
+   * an always-on editor there is nothing to finish, so only the live status
+   * and who else is here remain.
+   */
   let { live, ondone } = $props();
 </script>
 
@@ -16,11 +20,13 @@
     {collabText('itemMergeWarning')}
   </div>
 {/if}
-<div class="live-bar">
-  <Button variant="default" onclick={ondone} dataTestid="item-description-done">
-    {collabText('done')}
-  </Button>
-  <span class="live-bar__hint">{collabText('autosaves')}</span>
+<div class="live-bar" class:live-bar--always-on={live.alwaysOn}>
+  {#if !live.alwaysOn}
+    <Button variant="default" onclick={ondone} dataTestid="item-description-done">
+      {collabText('done')}
+    </Button>
+    <span class="live-bar__hint">{collabText('autosaves')}</span>
+  {/if}
   <span class="live-bar__status">
     <LivePageStatus
       {live}
@@ -36,6 +42,11 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem 0.75rem;
+  }
+
+  .live-bar--always-on {
+    min-height: 1.5rem;
+    margin-top: -0.25rem;
   }
 
   .live-bar__hint {

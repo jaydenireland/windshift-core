@@ -64,7 +64,7 @@
   let editorContent = $state('');
 
   // Live co-editing (lib/collab): while live, edits save themselves.
-  const live = useLiveItemDescription({ item: () => item, editing: () => editingDescription && canEdit });
+  const live = useLiveItemDescription({ item: () => item, editing: () => editingDescription && canEdit, alwaysOn: () => canEdit });
   // The text just left in a live edit, shown until the item reloads with it.
   let liveShown = $state(null);
   $effect(() => {
@@ -76,7 +76,7 @@
   // Handle image insertions from attachments or uploads
   export function insertImage(imageData) {
     // If not currently editing, start editing first
-    if (!editingDescription) {
+    if (!editingDescription && !live.alwaysOn) {
       startEditingDescription();
       // Wait for editor to be ready, then insert
       setTimeout(() => {
@@ -155,6 +155,10 @@
   }
 
   function handleKeydown(event) {
+    if (live.alwaysOn) {
+      live.leave(event);
+      return;
+    }
     if (live.autosaves && (matchesShortcut(event, saveShortcut) || matchesShortcut(event, cancelShortcut))) {
       event.preventDefault();
       event.stopPropagation();
@@ -201,14 +205,15 @@
 </script>
 
 <div class="pt-2">
-  {#if editingDescription}
+  {#if editingDescription || live.alwaysOn}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="space-y-3" onkeydown={handleKeydown} data-testid="item-description-editor">
+    <div class="space-y-3" class:item-description-live={live.alwaysOn} onkeydown={handleKeydown} data-testid="item-description-editor">
       <MilkdownEditor
         bind:this={milkdownEditor}
         bind:content={editorContent}
         placeholder={t('items.enterDescription')}
         showToolbar={true}
+        hideToolbarUntilFocus={live.alwaysOn}
         itemId={item.id}
         workspaceId={item.workspace_id}
         onImageInsert={handleImageInsert}

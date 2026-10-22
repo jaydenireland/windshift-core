@@ -43,7 +43,7 @@ git diff upstream/main -- . ':!internal/collab' ':!frontend/src/lib/collab' \
 | `frontend/src/lib/features/pages/PagesView.svelte` | `useLivePage(...)`; `<LivePageNotices>`; passes `live` to the toolbar and editor props; title/appearance saves omit the body while live (`omitNullBody`, `live.bodyless`) |
 | `frontend/src/lib/features/pages/PageEditor.svelte` | Passes `collab`/`collabKey` to the editor |
 | `frontend/src/lib/features/pages/PageToolbar.svelte` | `live` prop rendering `<LivePageStatus>` |
-| `frontend/src/lib/features/items/ItemDetailDescription.svelte` | `useLiveItemDescription(...)`; passes `collab`/`collabKey`/`readonly` to the editor; `<LiveItemDescriptionBar>` (Done) instead of Save/Cancel while live; Escape and Cmd/Ctrl+Enter finish a live edit; shows the just-edited text until the item reloads |
+| `frontend/src/lib/features/items/ItemDetailDescription.svelte` | `useLiveItemDescription(...)` with `alwaysOn`; the editor branch also renders when `live.alwaysOn` (class `item-description-live`, `hideToolbarUntilFocus`); passes `collab`/`collabKey`/`readonly` to the editor; `<LiveItemDescriptionBar>` (Done, or just status when always on) instead of Save/Cancel while live; keydown defers to `live.leave` when always on, else Escape and Cmd/Ctrl+Enter finish a live edit; `insertImage` skips entering edit mode when always on; shows the just-edited text until the item reloads |
 | `frontend/src/lib/features/items/ItemHistory.svelte` | One import; one `{:else if historyDiffApplies(change)}` branch before the generic `old → new` branch, rendering `<HistoryTextDiff>` |
 | `frontend/vite.config.js` | Import plus `collabVitePlugin()` |
 | `frontend/package.json`, `go.mod` | Dependencies: `yjs`, `y-prosemirror`, `y-protocols`, `lib0`, `@milkdown/plugin-collab` (pinned to the installed Milkdown version), `diff-match-patch`; `github.com/coder/websocket` |
@@ -112,6 +112,28 @@ long unchanged runs behind an "N unchanged words" button.
 
 If upstream restructures the `{#each group.changes}` block, re-add the branch
 just before its final `{:else}`. Nothing else depends on upstream internals.
+
+## Item descriptions: always-on editor
+
+When co-editing is available, an item's description is a live editor for
+everyone who may edit the item, from the moment the item opens. There is no
+click-to-edit: text can be selected and copied like any text, and everyone
+else's cursors and selections show inline, so people sharing a screen can
+point at a passage. The editor has no input chrome until it has focus; the
+toolbar then appears below the text (never above it, so the text under the
+pointer does not move mid-drag). Escape and Cmd/Ctrl+Enter leave the text
+(pending edits are stored, focus drops) rather than saving or cancelling.
+Saving is automatic as before (`collab_pending_settlements`, below). Opening
+an item without typing changes nothing: `CollabSession` never sends a
+checkpoint whose markdown equals what it last confirmed, even when forced by
+a flush or close, because the editor's serialization of the stored text can
+differ in formatting (list markers, blank lines) and would otherwise be
+written back as a change by someone who typed nothing.
+
+Until the session is live (`/api/collab/status` pending, or the server has
+co-editing disabled) the description shows as upstream's read-only view with
+its click-to-edit, so a server without co-editing behaves exactly as upstream.
+Users who cannot edit the item see upstream's read-only view.
 
 ## Item descriptions: when history and notifications fire
 
